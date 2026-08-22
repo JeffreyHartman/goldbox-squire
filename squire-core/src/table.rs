@@ -106,7 +106,10 @@ impl Table {
             }
             if f.kind == FieldKind::Enum {
                 let named = f.enum_name.as_deref().ok_or_else(|| {
-                    Error::Table(format!("field `{}` is an enum but names no enumeration", f.name))
+                    Error::Table(format!(
+                        "field `{}` is an enum but names no enumeration",
+                        f.name
+                    ))
                 })?;
                 if !self.enums.contains_key(named) {
                     return Err(Error::Table(format!(

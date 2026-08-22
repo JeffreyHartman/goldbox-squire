@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[lib]
+name = "squire_cli"
+path = "src/lib.rs"
+
 [[bin]]
 name = "gbs"
 path = "src/main.rs"
@@ -13,3 +17,5 @@ path = "src/main.rs"
 [dependencies]
 squire-core = { path = "../squire-core" }
 serde_json.workspace = true
+serde.workspace = true
+toml.workspace = true

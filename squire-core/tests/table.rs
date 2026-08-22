@@ -9,7 +9,10 @@ fn the_builtin_pool_of_radiance_table_loads() {
     let t = por();
 
     assert_eq!(t.game, "Pool of Radiance");
-    assert_eq!(t.record_len, 285, "the record is 285 bytes, offsets 0x000..=0x11C");
+    assert_eq!(
+        t.record_len, 285,
+        "the record is 285 bytes, offsets 0x000..=0x11C"
+    );
 }
 
 #[test]
@@ -44,7 +47,11 @@ fn enumerations_carry_their_value_names() {
     assert_eq!(t.enum_name("class", 0x04), Some("ranger"));
     assert_eq!(t.enum_name("race", 0x07), Some("human"));
     assert_eq!(t.enum_name("status", 0x06), Some("dead"));
-    assert_eq!(t.enum_name("class", 0xFE), None, "an unknown value has no name");
+    assert_eq!(
+        t.enum_name("class", 0xFE),
+        None,
+        "an unknown value has no name"
+    );
 }
 
 #[test]

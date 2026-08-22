@@ -163,7 +163,9 @@ pub fn validate(table: &Table, bytes: &[u8]) -> Result<(), Error> {
         return reject("maximum hit points is zero".into());
     }
     if cur > max as i16 {
-        return reject(format!("current hit points {cur} exceeds the maximum {max}"));
+        return reject(format!(
+            "current hit points {cur} exceeds the maximum {max}"
+        ));
     }
 
     Ok(())

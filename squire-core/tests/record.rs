@@ -276,7 +276,12 @@ fn every_real_save_file_passes_validation() {
 
     for (i, bytes) in saves.iter().enumerate() {
         let result = record::validate(&Table::pool_of_radiance(), bytes);
-        assert!(result.is_ok(), "CHRDATA{}.SAV rejected: {:?}", i + 1, result);
+        assert!(
+            result.is_ok(),
+            "CHRDATA{}.SAV rejected: {:?}",
+            i + 1,
+            result
+        );
     }
 }
 

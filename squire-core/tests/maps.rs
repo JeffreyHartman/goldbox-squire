@@ -71,7 +71,9 @@ fn parses_the_real_maps_file_of_this_process() {
         "every region has a positive length"
     );
     assert!(
-        regions.iter().any(|r| r.readable && r.writable && r.path.is_none()),
+        regions
+            .iter()
+            .any(|r| r.readable && r.writable && r.path.is_none()),
         "a live process has an anonymous read-write region, which is where guest RAM lives"
     );
 }
