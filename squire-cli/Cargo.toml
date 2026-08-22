@@ -1,0 +1,15 @@
+[package]
+name = "squire-cli"
+description = "Command line front end for Goldbox Squire."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "gbs"
+path = "src/main.rs"
+
+[dependencies]
+squire-core = { path = "../squire-core" }
+serde_json.workspace = true
