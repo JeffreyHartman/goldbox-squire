@@ -6,6 +6,11 @@
 #
 # This file describes only the fields that Goldbox Squire reads or validates.
 # The record holds more. Add a field here rather than adding code.
+#
+# transform = "sixty_minus" marks a field the engine stores as sixty minus the
+# real value. CCHFORM.TXT documents THAC0 that way ("60 - Base THAC0"), armor
+# class uses the same trick, and the party's own character screen confirmed it
+# live: raw 59, 56, 60, 58, 53, 56 showed as AC 1, 4, 0, 2, 7, 4.
 
 game = "Pool of Radiance"
 record_len = 285   # offsets 0x000 through 0x11C
@@ -63,6 +68,7 @@ name = "thac0_base"
 offset = 0x02D
 len = 1
 kind = "u8"
+transform = "sixty_minus"
 
 [[field]]
 name = "race"
@@ -211,6 +217,7 @@ name = "armor_class_base"
 offset = 0x0A9
 len = 1
 kind = "u8"
+transform = "sixty_minus"
 
 [[field]]
 name = "experience"
@@ -236,12 +243,14 @@ name = "thac0_current"
 offset = 0x110
 len = 1
 kind = "u8"
+transform = "sixty_minus"
 
 [[field]]
 name = "armor_class_current"
 offset = 0x111
 len = 1
 kind = "u8"
+transform = "sixty_minus"
 
 [[field]]
 name = "hit_points_current"

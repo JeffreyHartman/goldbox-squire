@@ -38,6 +38,18 @@ impl FieldKind {
     }
 }
 
+/// A stored value that is not the shown value.
+///
+/// The Gold Box engine stores armor class and THAC0 as sixty minus the real
+/// number, so the byte never goes negative even when the armor class does.
+/// `CCHFORM.TXT` documents the THAC0 field as literally "60 - Base THAC0".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Transform {
+    /// The shown value is sixty minus the stored byte.
+    SixtyMinus,
+}
+
 /// One field of the character record.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Field {
@@ -48,6 +60,9 @@ pub struct Field {
     /// The enumeration this field's value is looked up in, for `FieldKind::Enum`.
     #[serde(rename = "enum")]
     pub enum_name: Option<String>,
+    /// How the stored byte becomes the shown value, when they differ.
+    #[serde(default)]
+    pub transform: Option<Transform>,
 }
 
 /// The record layout of one game.
@@ -125,6 +140,12 @@ impl Table {
                         f.name
                     )));
                 }
+            }
+            if f.transform.is_some() && f.kind != FieldKind::U8 {
+                return Err(Error::Table(format!(
+                    "field `{}` has a transform, which only a one-byte number supports",
+                    f.name
+                )));
             }
             if seen.insert(f.name.as_str(), ()).is_some() {
                 return Err(Error::Table(format!("field `{}` is defined twice", f.name)));

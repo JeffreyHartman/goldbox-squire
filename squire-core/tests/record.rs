@@ -285,3 +285,49 @@ fn decodes_a_multi_class_character_from_a_real_save() {
     assert_eq!(bakshi.class.as_deref(), Some("cleric/fighter/mage"));
     assert_eq!(bakshi.level, 1, "all three classes are level 1");
 }
+
+// --- the sixty-minus encoding ------------------------------------------------
+// The engine stores armor class and THAC0 as 60 minus the real value, so the
+// byte never goes negative even when the armor class does. CCHFORM.TXT
+// documents the THAC0 field as literally "60 - Base THAC0". Confirmed live
+// in-game on 2026-08-22: the character screen showed AC 1, 4, 0, 2, 7, 4 while
+// the raw bytes read 59, 56, 60, 58, 53, 56.
+
+#[test]
+fn decodes_armor_class_from_the_sixty_minus_encoding() {
+    let mut b = RecordBuilder::valid();
+    b.at(0x111, 59);
+
+    let c = decode(&b.build());
+
+    assert_eq!(c.armor_class, 1);
+}
+
+#[test]
+fn a_very_good_armor_class_is_negative() {
+    let mut b = RecordBuilder::valid();
+    b.at(0x111, 62);
+
+    let c = decode(&b.build());
+
+    assert_eq!(c.armor_class, -2);
+}
+
+#[test]
+fn decodes_thac0_from_the_sixty_minus_encoding() {
+    let mut b = RecordBuilder::valid();
+    b.at(0x110, 40);
+
+    let c = decode(&b.build());
+
+    assert_eq!(c.thac0, 20);
+}
+
+#[test]
+fn decodes_the_real_party_armor_classes() {
+    // The expected values come from the game's own character screen, read off
+    // it while the party stood in the training hall. Not computed here.
+    let acs: Vec<i16> = real_saves().iter().map(|s| decode(s).armor_class).collect();
+
+    assert_eq!(acs, vec![1, 4, 0, 2, 7, 4]);
+}

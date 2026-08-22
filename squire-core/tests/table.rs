@@ -146,3 +146,38 @@ kind = "u16le"
 
     assert!(err.to_string().contains("not_really_a_word"), "got: {err}");
 }
+
+#[test]
+fn the_armor_class_fields_carry_the_sixty_minus_transform() {
+    let t = por();
+
+    use squire_core::table::Transform;
+    assert_eq!(
+        t.field("armor_class_current").unwrap().transform,
+        Some(Transform::SixtyMinus)
+    );
+    assert_eq!(
+        t.field("thac0_current").unwrap().transform,
+        Some(Transform::SixtyMinus)
+    );
+    assert_eq!(t.field("hit_points_current").unwrap().transform, None);
+}
+
+#[test]
+fn a_transform_on_a_multi_byte_field_is_rejected_at_load() {
+    let bad = r#"
+game = "Broken"
+record_len = 8
+
+[[field]]
+name = "two_wide"
+offset = 0
+len = 2
+kind = "u16le"
+transform = "sixty_minus"
+"#;
+
+    let err = Table::from_toml(bad).unwrap_err();
+
+    assert!(err.to_string().contains("two_wide"), "got: {err}");
+}

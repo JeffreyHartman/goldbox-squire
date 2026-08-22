@@ -24,8 +24,11 @@ pub struct Character {
     /// character holds a negative value.
     pub hit_points_current: i16,
     pub hit_points_maximum: u8,
-    pub armor_class: u8,
-    pub thac0: u8,
+    /// Stored as sixty minus the real value, decoded here. Lower is better,
+    /// and a very good armor class is negative.
+    pub armor_class: i16,
+    /// Stored as sixty minus the real value, decoded here.
+    pub thac0: i16,
     pub experience: u32,
     pub age: u16,
     pub strength: u8,
@@ -84,8 +87,8 @@ pub fn decode(table: &Table, bytes: &[u8]) -> Result<Character, Error> {
         level,
         hit_points_current: signed_u8_at(table, bytes, "hit_points_current").unwrap_or(0),
         hit_points_maximum: u8_at(table, bytes, "hit_points_maximum").unwrap_or(0),
-        armor_class: u8_at(table, bytes, "armor_class_current").unwrap_or(0),
-        thac0: u8_at(table, bytes, "thac0_current").unwrap_or(0),
+        armor_class: shown_at(table, bytes, "armor_class_current").unwrap_or(0),
+        thac0: shown_at(table, bytes, "thac0_current").unwrap_or(0),
         experience: u32_at(table, bytes, "experience").unwrap_or(0),
         age: u16_at(table, bytes, "age").unwrap_or(0),
         strength: u8_at(table, bytes, "strength").unwrap_or(0),
@@ -211,6 +214,16 @@ fn u8_at(table: &Table, bytes: &[u8], name: &str) -> Option<u8> {
 
 fn signed_u8_at(table: &Table, bytes: &[u8], name: &str) -> Option<i16> {
     u8_at(table, bytes, name).map(|v| v as i8 as i16)
+}
+
+/// Reads one byte and applies the field's transform, when it has one.
+fn shown_at(table: &Table, bytes: &[u8], name: &str) -> Option<i16> {
+    let f = table.field(name)?;
+    let raw = *bytes.get(f.offset)? as i16;
+    Some(match f.transform {
+        Some(crate::table::Transform::SixtyMinus) => 60 - raw,
+        None => raw,
+    })
 }
 
 fn u16_at(table: &Table, bytes: &[u8], name: &str) -> Option<u16> {
