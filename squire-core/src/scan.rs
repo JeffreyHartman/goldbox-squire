@@ -41,6 +41,11 @@ pub fn find_records(table: &Table, haystack: &[u8], names: &[String]) -> Vec<Hit
     };
 
     for name in names {
+        // The name field holds fifteen characters. A longer name cannot be in
+        // a record, so searching for it would waste the whole scan.
+        if name.is_empty() || name.len() > name_field.len - 1 {
+            continue;
+        }
         // The record starts with a length byte, then the name. Searching for
         // both together costs nothing and removes most false matches early.
         let mut needle = Vec::with_capacity(name.len() + 1);

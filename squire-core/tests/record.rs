@@ -1,3 +1,5 @@
+mod common;
+
 use squire_core::record::{self, Character};
 use squire_core::table::Table;
 
@@ -233,22 +235,13 @@ fn rejects_a_run_of_zero_bytes() {
 
 // --- the real save files ---------------------------------------------------
 
-/// Reads Jeff's own saves when they are present. This is the check that the
-/// table matches a real game, not only the test's idea of one.
-fn real_saves() -> Vec<Vec<u8>> {
-    let dir = std::path::Path::new("/home/jeff/goldbox/pool-of-radiance/data/POOLRAD");
-    (1..=6)
-        .filter_map(|i| std::fs::read(dir.join(format!("CHRDATA{i}.SAV"))).ok())
-        .collect()
-}
+/// The committed saves. This is the check that the table matches a real game,
+/// not only the test's idea of one.
+use common::saves as real_saves;
 
 #[test]
 fn decodes_every_real_save_file() {
     let saves = real_saves();
-    if saves.is_empty() {
-        eprintln!("skipped: the Pool of Radiance saves are not on this machine");
-        return;
-    }
     assert_eq!(saves.len(), 6, "a full party is six characters");
 
     let names: Vec<String> = saves.iter().map(|s| decode(s).name).collect();
@@ -269,10 +262,6 @@ fn decodes_every_real_save_file() {
 #[test]
 fn every_real_save_file_passes_validation() {
     let saves = real_saves();
-    if saves.is_empty() {
-        eprintln!("skipped: the Pool of Radiance saves are not on this machine");
-        return;
-    }
 
     for (i, bytes) in saves.iter().enumerate() {
         let result = record::validate(&Table::pool_of_radiance(), bytes);
@@ -288,9 +277,6 @@ fn every_real_save_file_passes_validation() {
 #[test]
 fn decodes_a_multi_class_character_from_a_real_save() {
     let saves = real_saves();
-    if saves.is_empty() {
-        return;
-    }
 
     let bakshi = decode(&saves[1]);
 

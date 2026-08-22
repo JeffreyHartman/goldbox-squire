@@ -47,9 +47,22 @@ fn the_started_process_is_a_child_of_this_one() {
 fn the_memory_of_the_started_process_can_be_read() {
     let mut running = sleeper().start().unwrap();
 
-    let regions = running.reader().regions().unwrap();
+    // `spawn` returns as soon as the fork happens, so the child can still be
+    // between fork and exec. Its address space is not the program's yet. Wait
+    // for it rather than reading whatever is there at this instant.
+    let reader = running.reader();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut regions = reader.regions().unwrap();
+    while regions.len() <= 3 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+        regions = reader.regions().unwrap();
+    }
 
-    assert!(regions.len() > 3, "the child has a mapped address space");
+    assert!(
+        regions.len() > 3,
+        "the child still had only {} regions after five seconds",
+        regions.len()
+    );
     running.stop().unwrap();
 }
 

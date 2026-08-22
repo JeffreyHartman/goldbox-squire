@@ -123,3 +123,34 @@ fn a_buffer_on_the_heap_is_found_by_scanning_the_searchable_regions() {
         "the known pattern was found where it lives"
     );
 }
+
+#[test]
+fn a_read_that_returns_less_than_asked_for_is_an_error_not_a_short_buffer() {
+    // A read that crosses out of a mapped region comes back short. Treating a
+    // short read as a full one is how a wrong number reaches the user quietly,
+    // so the reader refuses rather than reporting partial bytes.
+    let regions = myself().regions().unwrap();
+    let last = regions.iter().max_by_key(|r| r.end).unwrap();
+
+    // Start inside the final region and ask for far more than remains.
+    let addr = last.end - 64;
+    let mut dest = vec![0u8; 8192];
+    let result = myself().read(addr, &mut dest);
+
+    assert!(result.is_err(), "expected an error, got {result:?}");
+}
+
+#[test]
+fn reads_a_region_in_chunks_and_keeps_going_past_a_bad_page() {
+    // Some regions look readable but hold an inaccessible first page, which is
+    // normal for a stack. Reading the whole region at once loses all of it.
+    // Chunked reading keeps what is readable.
+    let reader = myself();
+    let regions = reader.regions().unwrap();
+    let searchable = squire_core::mem::searchable(&regions);
+    assert!(!searchable.is_empty());
+
+    let total: usize = searchable.iter().map(|r| reader.read_block(r).len()).sum();
+
+    assert!(total > 0, "some memory was read");
+}

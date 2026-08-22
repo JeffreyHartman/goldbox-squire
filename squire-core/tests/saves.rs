@@ -1,14 +1,11 @@
-use squire_core::saves;
+mod common;
 
-const REAL: &str = "/home/jeff/goldbox/pool-of-radiance/data/POOLRAD";
+use squire_core::saves;
 
 #[test]
 fn reads_the_party_names_from_a_game_folder() {
-    if !std::path::Path::new(REAL).exists() {
-        return;
-    }
-
-    let party = saves::party_names(REAL).unwrap();
+    // The committed fixtures are a real game folder's CHRDATA files.
+    let party = saves::party_names(common::fixture_dir()).unwrap();
 
     assert_eq!(
         party,

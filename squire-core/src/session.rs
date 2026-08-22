@@ -138,14 +138,16 @@ impl<R: Reader> Session<R> {
         let mut anchors: Vec<Anchor> = Vec::new();
 
         for region in mem::searchable(&regions) {
-            let mut buf = vec![0u8; region.len()];
             // A region can go away between listing and reading, and one that
-            // starts on an inaccessible page fails as a whole. Neither is a
-            // reason to abandon the scan.
-            if self.reader.read(region.start, &mut buf).is_err() {
+            // starts on an inaccessible page fails at that page. Neither is a
+            // reason to abandon the scan, so the reader sweeps in chunks and
+            // reports what it actually got.
+            let block = self.reader.read_block(&region);
+            if block.is_empty() {
                 continue;
             }
-            for hit in scan::find_records(&self.table, &buf, &self.names) {
+            let buf = &block.bytes;
+            for hit in scan::find_records(&self.table, buf, &self.names) {
                 // The first copy of a name wins. A second copy is usually the
                 // save file still sitting in a buffer.
                 if anchors.iter().any(|a| a.name == hit.name) {
@@ -153,7 +155,7 @@ impl<R: Reader> Session<R> {
                 }
                 anchors.push(Anchor {
                     name: hit.name,
-                    addr: region.start + hit.offset,
+                    addr: block.start + hit.offset,
                 });
             }
         }

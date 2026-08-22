@@ -87,7 +87,15 @@ impl Table {
         let mut seen: BTreeMap<&str, ()> = BTreeMap::new();
 
         for f in &self.fields {
-            if f.offset + f.len > self.record_len {
+            // `checked_add`, because a table is untrusted input. A plain `+`
+            // overflows before the comparison, which lets a bad offset through.
+            let end = f.offset.checked_add(f.len).ok_or_else(|| {
+                Error::Table(format!(
+                    "field `{}` at offset {:#X} with length {} overflows an address",
+                    f.name, f.offset, f.len
+                ))
+            })?;
+            if end > self.record_len {
                 return Err(Error::Table(format!(
                     "field `{}` at offset {:#05X} with length {} runs past the {}-byte record",
                     f.name, f.offset, f.len, self.record_len
@@ -127,7 +135,7 @@ impl Table {
         sorted.sort_by_key(|f| f.offset);
         for pair in sorted.windows(2) {
             let (a, b) = (pair[0], pair[1]);
-            if a.offset + a.len > b.offset {
+            if a.offset.saturating_add(a.len) > b.offset {
                 return Err(Error::Table(format!(
                     "field `{}` overlaps field `{}`",
                     a.name, b.name

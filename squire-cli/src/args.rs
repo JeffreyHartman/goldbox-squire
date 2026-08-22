@@ -55,9 +55,10 @@ OPTIONS:
                        Stored in the config file, so it is needed once.
     --dosbox <CMD>     The emulator to start. Default: dosbox
     --conf <FILE>      A configuration file to pass to the emulator.
-    --pid <PID>        Read an emulator this tool did not start. This needs
-                       kernel.yama.ptrace_scope to be 0, which weakens the
-                       machine. Prefer letting gbs start the game.
+    --pid <PID>        Read an emulator this tool did not start. This works
+                       only where the system already permits it, and gbs will
+                       say so if it does not. Letting gbs start the game is
+                       the supported path and needs no system change.
     --watch            Redraw until stopped, rather than printing once.
     --interval <MS>    Milliseconds between redraws. Default: 500
     --json             Print JSON rather than a table.

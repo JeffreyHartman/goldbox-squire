@@ -6,7 +6,8 @@
 //! `/proc/<pid>/mem` quietly returns zeroes.
 
 use std::fs;
-use std::io::{IoSliceMut, Read, Seek, SeekFrom};
+use std::io::IoSliceMut;
+use std::os::unix::fs::FileExt;
 
 use nix::sys::uio::{process_vm_readv, RemoteIoVec};
 use nix::unistd::Pid;
@@ -27,6 +28,42 @@ pub trait Reader {
 
     /// The regions of the target's address space.
     fn regions(&self) -> Result<Vec<Region>, Error>;
+
+    /// Reads a whole region, in chunks, and reports what was readable.
+    ///
+    /// A region that looks readable can still begin on an inaccessible page,
+    /// which is normal for a stack. One large read of such a region fails as a
+    /// whole and loses every readable byte behind it. Reading in chunks keeps
+    /// the rest.
+    ///
+    /// The sweep stops at the first failure after data was found, because a
+    /// scanner needs one continuous block. A gap would move every later offset
+    /// and turn a found address into a wrong one.
+    fn read_block(&self, region: &Region) -> RegionBytes {
+        let mut bytes: Vec<u8> = Vec::new();
+        let mut start = region.start;
+        let mut at = region.start;
+
+        while at < region.end {
+            let want = CHUNK_LEN.min(region.end - at);
+            let mut chunk = vec![0u8; want];
+            match self.read(at, &mut chunk) {
+                Ok(_) => {
+                    if bytes.is_empty() {
+                        start = at;
+                    }
+                    bytes.extend_from_slice(&chunk);
+                    at += want;
+                }
+                // Nothing readable yet, so step past the bad page and retry.
+                Err(_) if bytes.is_empty() => at += want,
+                // Data already found, so this is the end of the block.
+                Err(_) => break,
+            }
+        }
+
+        RegionBytes { start, bytes }
+    }
 }
 
 /// Reads the memory of a live process.
@@ -45,14 +82,48 @@ impl ProcessReader {
     }
 
     /// The fallback path, used when `process_vm_readv` is unavailable.
+    ///
+    /// `read_at` rather than a seek and a read, so that the file offset is not
+    /// shared state and two reads cannot race with each other.
     fn read_via_proc_mem(&self, addr: usize, buf: &mut [u8]) -> Result<usize, Error> {
-        let mut f = fs::File::open(format!("/proc/{}/mem", self.pid))
+        let f = fs::File::open(format!("/proc/{}/mem", self.pid))
             .map_err(|e| Error::from_io_reading(self.pid, e))?;
-        f.seek(SeekFrom::Start(addr as u64))
-            .map_err(|e| Error::from_io_reading(self.pid, e))?;
-        f.read_exact(buf)
-            .map_err(|e| Error::from_io_reading(self.pid, e))?;
-        Ok(buf.len())
+        let mut done = 0;
+        while done < buf.len() {
+            match f.read_at(&mut buf[done..], (addr + done) as u64) {
+                Ok(0) => {
+                    return Err(Error::Unmapped {
+                        pid: self.pid,
+                        addr,
+                    })
+                }
+                Ok(n) => done += n,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(e) => return Err(Error::from_io_reading(self.pid, e)),
+            }
+        }
+        Ok(done)
+    }
+}
+
+/// How much is read in one call when sweeping a region.
+pub const CHUNK_LEN: usize = 1024 * 1024;
+
+/// The readable part of one region, and where it starts.
+#[derive(Debug, Clone, Default)]
+pub struct RegionBytes {
+    /// The address the first byte came from.
+    pub start: usize,
+    pub bytes: Vec<u8>,
+}
+
+impl RegionBytes {
+    pub fn len(&self) -> usize {
+        self.bytes.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
     }
 }
 
@@ -66,7 +137,15 @@ impl Reader for ProcessReader {
         let mut local = [IoSliceMut::new(buf)];
 
         match process_vm_readv(Pid::from_raw(self.pid), &mut local, &remote) {
-            Ok(n) => Ok(n),
+            // A read that crosses out of a mapped region comes back short.
+            // Reporting that as a success leaves the rest of the buffer holding
+            // whatever was in it before, which is how a wrong number reaches
+            // the user quietly. This tool refuses instead.
+            Ok(n) if n == len => Ok(n),
+            Ok(_) => Err(Error::Unmapped {
+                pid: self.pid,
+                addr,
+            }),
             Err(nix::errno::Errno::ENOSYS) => self.read_via_proc_mem(addr, buf),
             Err(e) => Err(Error::from_errno(self.pid, addr, e)),
         }

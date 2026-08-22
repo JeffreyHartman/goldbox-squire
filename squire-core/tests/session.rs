@@ -74,12 +74,9 @@ impl Reader for FakeMemory {
     }
 }
 
-fn saves() -> Vec<Vec<u8>> {
-    let dir = std::path::Path::new("/home/jeff/goldbox/pool-of-radiance/data/POOLRAD");
-    (1..=6)
-        .filter_map(|i| std::fs::read(dir.join(format!("CHRDATA{i}.SAV"))).ok())
-        .collect()
-}
+mod common;
+
+use common::saves;
 
 /// A fake emulator with a party in it, laid out with the real uneven gaps.
 fn emulator_with_party() -> (FakeMemory, Vec<Vec<u8>>, Vec<usize>) {
@@ -107,9 +104,6 @@ fn names(saves: &[Vec<u8>]) -> Vec<String> {
 #[test]
 fn reads_the_whole_party_out_of_a_running_emulator() {
     let (mem, saves, _) = emulator_with_party();
-    if saves.is_empty() {
-        return;
-    }
     let mut session = Session::new(mem, Table::pool_of_radiance(), names(&saves));
 
     let party = session.party().unwrap();
@@ -123,9 +117,6 @@ fn reads_the_whole_party_out_of_a_running_emulator() {
 #[test]
 fn reports_a_change_in_hit_points_on_the_next_read() {
     let (mem, saves, offsets) = emulator_with_party();
-    if saves.is_empty() {
-        return;
-    }
     let mut session = Session::new(mem, Table::pool_of_radiance(), names(&saves));
     let before = session.party().unwrap().characters[5].hit_points_current;
 
@@ -140,9 +131,6 @@ fn reports_a_change_in_hit_points_on_the_next_read() {
 #[test]
 fn shows_a_dying_character_with_negative_hit_points() {
     let (mem, saves, offsets) = emulator_with_party();
-    if saves.is_empty() {
-        return;
-    }
     let mut session = Session::new(mem, Table::pool_of_radiance(), names(&saves));
     session.party().unwrap();
 
@@ -160,9 +148,6 @@ fn the_second_read_is_far_cheaper_than_the_first() {
     // The first read scans memory. Later reads go straight to the addresses
     // already found. This is what makes polling several times a second sane.
     let (mem, saves, _) = emulator_with_party();
-    if saves.is_empty() {
-        return;
-    }
     let mut session = Session::new(mem, Table::pool_of_radiance(), names(&saves));
 
     session.party().unwrap();
@@ -181,9 +166,6 @@ fn the_second_read_is_far_cheaper_than_the_first() {
 fn finds_the_party_again_when_it_moves_in_memory() {
     // A new save loaded, or the emulator restarted. The old addresses are dead.
     let (mem, saves, offsets) = emulator_with_party();
-    if saves.is_empty() {
-        return;
-    }
     let mut session = Session::new(mem, Table::pool_of_radiance(), names(&saves));
     session.party().unwrap();
 
@@ -212,9 +194,6 @@ fn reports_that_the_party_is_not_in_memory_rather_than_showing_stale_numbers() {
     // as if they were live is the failure mode this test exists to prevent.
     let mem = FakeMemory::new(64 * 1024);
     let saves = saves();
-    if saves.is_empty() {
-        return;
-    }
     let mut session = Session::new(mem, Table::pool_of_radiance(), names(&saves));
 
     let party = session.party().unwrap();
@@ -226,9 +205,6 @@ fn reports_that_the_party_is_not_in_memory_rather_than_showing_stale_numbers() {
 #[test]
 fn a_partial_party_is_reported_as_partial() {
     let saves = saves();
-    if saves.is_empty() {
-        return;
-    }
     let mem = FakeMemory::new(64 * 1024);
     mem.put(10_000, &saves[0]);
     mem.put(11_000, &saves[1]);
@@ -243,9 +219,6 @@ fn a_partial_party_is_reported_as_partial() {
 #[test]
 fn an_emulator_that_went_away_is_an_error_not_stale_data() {
     let (mem, saves, _) = emulator_with_party();
-    if saves.is_empty() {
-        return;
-    }
     let mut session = Session::new(mem, Table::pool_of_radiance(), names(&saves));
     session.party().unwrap();
 
@@ -261,9 +234,6 @@ fn keeps_reading_the_right_character_after_one_of_them_levels_up() {
     // experience. It does not change the name, which is why the name is the
     // anchor. The record must not be lost.
     let (mem, saves, offsets) = emulator_with_party();
-    if saves.is_empty() {
-        return;
-    }
     let mut session = Session::new(mem, Table::pool_of_radiance(), names(&saves));
     session.party().unwrap();
 

@@ -111,14 +111,19 @@ pub fn validate(table: &Table, bytes: &[u8]) -> Result<(), Error> {
     // The name. A length byte of 0 or above 15 cannot be right, and the
     // characters are upper-case ASCII, digits, spaces and punctuation.
     let name_field = field(table, "name")?;
-    let len = bytes[name_field.offset] as usize;
+    // Every read here goes through `get`. The bytes come from another
+    // process's memory, so this code must never index on trust.
+    let len = *bytes
+        .get(name_field.offset)
+        .ok_or_else(|| Error::NotARecord("the name field is past the end".into()))?
+        as usize;
     if len == 0 || len > name_field.len - 1 {
         return reject(format!("name length byte is {len}"));
     }
-    for (i, &b) in bytes[name_field.offset + 1..name_field.offset + 1 + len]
-        .iter()
-        .enumerate()
-    {
+    let name_bytes = bytes
+        .get(name_field.offset + 1..name_field.offset + 1 + len)
+        .ok_or_else(|| Error::NotARecord("the name runs past the end".into()))?;
+    for (i, &b) in name_bytes.iter().enumerate() {
         if !(0x20..=0x7E).contains(&b) {
             return reject(format!("name byte {i} is {b:#04x}, which is not printable"));
         }
@@ -191,8 +196,11 @@ fn field<'t>(table: &'t Table, name: &str) -> Result<&'t crate::table::Field, Er
 
 fn read_name(table: &Table, bytes: &[u8]) -> Result<String, Error> {
     let f = field(table, "name")?;
-    let len = (bytes[f.offset] as usize).min(f.len - 1);
-    let raw = &bytes[f.offset + 1..f.offset + 1 + len];
+    let len = bytes
+        .get(f.offset)
+        .map(|&n| (n as usize).min(f.len - 1))
+        .unwrap_or(0);
+    let raw = bytes.get(f.offset + 1..f.offset + 1 + len).unwrap_or(&[]);
     Ok(String::from_utf8_lossy(raw).into_owned())
 }
 

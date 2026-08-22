@@ -93,10 +93,10 @@ fn report<R: squire_core::mem::Reader>(
                         }
                         print(&party, args);
                     }
-                    Err(e) => {
-                        eprintln!("gbs: {e}");
-                        return Ok(());
-                    }
+                    // A read that fails is a failure, and the exit status
+                    // must say so. A script that watches gbs cannot tell a
+                    // clean stop from a permission error otherwise.
+                    Err(e) => return Err(e.to_string()),
                 }
                 std::thread::sleep(Duration::from_millis(args.interval_ms));
             }

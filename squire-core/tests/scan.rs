@@ -6,14 +6,11 @@ fn table() -> Table {
     Table::pool_of_radiance()
 }
 
-/// Reads the six real saves. These are the records the game itself wrote, so
-/// they are the right needles to hide in a haystack.
-fn real_saves() -> Vec<Vec<u8>> {
-    let dir = std::path::Path::new("/home/jeff/goldbox/pool-of-radiance/data/POOLRAD");
-    (1..=6)
-        .filter_map(|i| std::fs::read(dir.join(format!("CHRDATA{i}.SAV"))).ok())
-        .collect()
-}
+mod common;
+
+/// The six real saves. These are the records the game itself wrote, so they are
+/// the right needles to hide in a haystack.
+use common::saves as real_saves;
 
 /// Buries records in a buffer of filler at the given offsets.
 fn haystack(records: &[(usize, &[u8])], size: usize) -> Vec<u8> {
@@ -29,9 +26,6 @@ fn haystack(records: &[(usize, &[u8])], size: usize) -> Vec<u8> {
 #[test]
 fn finds_a_record_by_its_name() {
     let saves = real_saves();
-    if saves.is_empty() {
-        return;
-    }
     let buf = haystack(&[(4096, &saves[0])], 65536);
 
     let hits = scan::find_records(&table(), &buf, &["THRENDER GRONE".to_string()]);
@@ -44,9 +38,6 @@ fn finds_a_record_by_its_name() {
 #[test]
 fn finds_every_member_of_a_party() {
     let saves = real_saves();
-    if saves.is_empty() {
-        return;
-    }
     let names: Vec<String> = saves
         .iter()
         .map(|s| record::decode(&table(), s).unwrap().name)
@@ -74,9 +65,6 @@ fn finds_every_member_of_a_party() {
 #[test]
 fn returns_hits_in_ascending_address_order() {
     let saves = real_saves();
-    if saves.is_empty() {
-        return;
-    }
     let names: Vec<String> = saves
         .iter()
         .map(|s| record::decode(&table(), s).unwrap().name)
@@ -113,9 +101,6 @@ fn finds_nothing_in_an_empty_buffer() {
 #[test]
 fn finds_nothing_when_the_record_runs_off_the_end_of_the_buffer() {
     let saves = real_saves();
-    if saves.is_empty() {
-        return;
-    }
     // The name is present, but there is not room for a whole record behind it.
     let mut buf = vec![0u8; 300];
     buf[100..100 + 20].copy_from_slice(&saves[0][..20]);
@@ -129,9 +114,6 @@ fn finds_nothing_when_the_record_runs_off_the_end_of_the_buffer() {
 fn a_duplicate_copy_of_a_record_is_reported_as_two_hits() {
     // The caller decides which copy is live. The scanner reports what it sees.
     let saves = real_saves();
-    if saves.is_empty() {
-        return;
-    }
     let buf = haystack(&[(1000, &saves[0]), (40000, &saves[0])], 65536);
 
     let hits = scan::find_records(&table(), &buf, &["THRENDER GRONE".to_string()]);
