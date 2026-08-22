@@ -8,6 +8,7 @@
 use std::fs;
 use std::io::IoSliceMut;
 use std::os::unix::fs::FileExt;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use nix::sys::uio::{process_vm_readv, RemoteIoVec};
 use nix::unistd::Pid;
@@ -19,6 +20,39 @@ use crate::Error;
 /// allocates 16 to 32 MiB for the emulated machine, so nothing we want is
 /// bigger, and scanning a multi-gigabyte reservation wastes the whole scan.
 pub const MAX_REGION_LEN: usize = 512 * 1024 * 1024;
+
+/// A one-shot latch. The first call to `first_time` returns `true`. Every call
+/// after returns `false`.
+///
+/// This is how a warning prints once per run and not once per read. A shared
+/// static holds the state, so all reads answer to the same latch.
+#[derive(Debug, Default)]
+pub struct OnceFlag {
+    fired: AtomicBool,
+}
+
+impl OnceFlag {
+    /// A fresh latch that has not fired.
+    pub const fn new() -> Self {
+        OnceFlag {
+            fired: AtomicBool::new(false),
+        }
+    }
+
+    /// Returns `true` the first time only, then `false` for ever after.
+    ///
+    /// `swap` sets the flag to `true` and hands back the value it held before.
+    /// The first call gets back `false`, so it reports the first time. Every
+    /// call after gets back `true`. `Relaxed` is enough, because the only fact
+    /// that matters is which single call was first.
+    pub fn first_time(&self) -> bool {
+        !self.fired.swap(true, Ordering::Relaxed)
+    }
+}
+
+/// Set the first time a read falls back to the file path, so the warning about
+/// the slower path prints once per run.
+static FALLBACK_WARNED: OnceFlag = OnceFlag::new();
 
 /// Reads bytes out of somewhere. A trait so that a test can supply memory
 /// without a live emulator.
@@ -83,9 +117,13 @@ impl ProcessReader {
 
     /// The fallback path, used when `process_vm_readv` is unavailable.
     ///
+    /// `read` calls this on its own when the syscall is missing. It is public so
+    /// a test can exercise the file path directly, which the syscall path hides
+    /// on any kernel that has the syscall.
+    ///
     /// `read_at` rather than a seek and a read, so that the file offset is not
     /// shared state and two reads cannot race with each other.
-    fn read_via_proc_mem(&self, addr: usize, buf: &mut [u8]) -> Result<usize, Error> {
+    pub fn read_via_proc_mem(&self, addr: usize, buf: &mut [u8]) -> Result<usize, Error> {
         let f = fs::File::open(format!("/proc/{}/mem", self.pid))
             .map_err(|e| Error::from_io_reading(self.pid, e))?;
         let mut done = 0;
@@ -103,6 +141,22 @@ impl ProcessReader {
             }
         }
         Ok(done)
+    }
+
+    /// Prints the fallback warning, but only the first time per run.
+    ///
+    /// The file path is slower, and it does not report every unreadable page as
+    /// an error. A silent switch to it would hide those facts, so the reader
+    /// says so once, the first time it happens.
+    fn warn_fallback_once(&self) {
+        if FALLBACK_WARNED.first_time() {
+            eprintln!(
+                "warning: process_vm_readv is unavailable on this kernel; \
+                 falling back to /proc/{}/mem. That path is slower, and it \
+                 does not report every unreadable page as an error.",
+                self.pid
+            );
+        }
     }
 }
 
@@ -146,7 +200,10 @@ impl Reader for ProcessReader {
                 pid: self.pid,
                 addr,
             }),
-            Err(nix::errno::Errno::ENOSYS) => self.read_via_proc_mem(addr, buf),
+            Err(nix::errno::Errno::ENOSYS) => {
+                self.warn_fallback_once();
+                self.read_via_proc_mem(addr, buf)
+            }
             Err(e) => Err(Error::from_errno(self.pid, addr, e)),
         }
     }

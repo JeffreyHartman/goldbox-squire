@@ -154,3 +154,43 @@ fn reads_a_region_in_chunks_and_keeps_going_past_a_bad_page() {
 
     assert!(total > 0, "some memory was read");
 }
+
+#[test]
+fn the_fallback_warning_latch_fires_once_then_stays_quiet() {
+    // The warning about the slower file path must print once per run, not once
+    // per read. This latch is the mechanism: the first call reports the first
+    // time, and no call after does.
+    use squire_core::mem::OnceFlag;
+
+    let flag = OnceFlag::new();
+
+    assert!(flag.first_time(), "the first call reports the first time");
+    assert!(!flag.first_time(), "the second call does not");
+    assert!(!flag.first_time(), "and no call after does either");
+}
+
+#[test]
+fn the_file_fallback_reads_the_same_bytes_as_the_fast_path() {
+    // The fallback path reads through /proc/<pid>/mem instead of the syscall.
+    // It must return the same bytes, so a strange kernel still gets the right
+    // numbers, only slower.
+    let source: Vec<u8> = (0..1024).map(|i| (i % 256) as u8).collect();
+    let addr = source.as_ptr() as usize;
+    let mut dest = vec![0u8; 1024];
+
+    let n = myself().read_via_proc_mem(addr, &mut dest).unwrap();
+
+    assert_eq!(n, 1024);
+    assert_eq!(dest, source);
+}
+
+#[test]
+fn the_file_fallback_errors_on_an_unmapped_address() {
+    // The fallback must refuse an unreadable address, the same as the fast
+    // path, and not return a buffer of zeroes.
+    let mut dest = vec![0u8; 16];
+
+    let result = myself().read_via_proc_mem(0x10, &mut dest);
+
+    assert!(result.is_err(), "expected an error, got {result:?}");
+}
