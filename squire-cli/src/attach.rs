@@ -18,7 +18,7 @@ use crate::config::Config;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Resolved {
     pub game_id: String,
-    pub game_dir: PathBuf,
+    pub save_dir: PathBuf,
     pub slot: char,
     /// The slot's party names, in marching order.
     pub names: Vec<String>,
@@ -42,13 +42,13 @@ pub fn resolve(args: &Args, config: &Config) -> Result<Resolved, String> {
         ));
     }
 
-    let game_dir = match &args.game_dir {
+    let save_dir = match &args.game_dir {
         Some(dir) => PathBuf::from(dir),
         None => install_of(config, &game_id)
             .ok_or("--pid cannot guess the save folder. Pass --game-dir <DIR>.")?,
     };
 
-    let slots = saves::populated_slots(&game_dir).map_err(|e| e.to_string())?;
+    let slots = saves::populated_slots(&save_dir).map_err(|e| e.to_string())?;
     let slot = match args.slot {
         Some(letter) if slots.iter().any(|s| s.letter == letter) => letter,
         Some(letter) => {
@@ -76,7 +76,7 @@ pub fn resolve(args: &Args, config: &Config) -> Result<Resolved, String> {
 
     Ok(Resolved {
         game_id,
-        game_dir,
+        save_dir,
         slot,
         names,
     })

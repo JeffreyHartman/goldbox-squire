@@ -62,7 +62,7 @@ OPTIONS:
     -h, --help         Print this text.
 
 MANUAL SETUP, when discovery does not find your install:
-    --game-dir <DIR>   The folder holding the game's CHRDATA*.SAV files.
+    --game-dir <DIR>   The folder holding the game's CHRDAT*.SAV files.
     --conf <FILE>      The DOSBox configuration file that starts the game.
     --dosbox <CMD>     The emulator to start. Default: dosbox
     The three are remembered as a manual install, so they are given once.

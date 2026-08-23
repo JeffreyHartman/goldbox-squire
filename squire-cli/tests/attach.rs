@@ -25,7 +25,7 @@ fn all_flags_given_resolves_with_no_interaction() {
     let resolved = attach::resolve(&args, &Config::default()).unwrap();
 
     assert_eq!(resolved.game_id, "pool-of-radiance");
-    assert_eq!(resolved.game_dir, dir);
+    assert_eq!(resolved.save_dir, dir);
     assert_eq!(resolved.slot, 'J');
     assert_eq!(resolved.names, vec!["JULIET"]);
 }
@@ -39,7 +39,7 @@ fn the_remembered_install_fills_in_game_and_folder() {
     let resolved = attach::resolve(&args, &config).unwrap();
 
     assert_eq!(resolved.game_id, "pool-of-radiance");
-    assert_eq!(resolved.game_dir, dir);
+    assert_eq!(resolved.save_dir, dir);
 }
 
 #[test]

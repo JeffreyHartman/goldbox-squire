@@ -28,9 +28,9 @@ pub struct PopulatedSlot {
 ///
 /// An empty slot is an error that names the populated slots, so the caller can
 /// pass the message straight to the user.
-pub fn slot_party_names(game_dir: impl AsRef<Path>, letter: char) -> Result<Vec<String>, Error> {
+pub fn slot_party_names(save_dir: impl AsRef<Path>, letter: char) -> Result<Vec<String>, Error> {
     let letter = normalize_letter(letter)?;
-    let files = save_files(game_dir.as_ref())?;
+    let files = save_files(save_dir.as_ref())?;
 
     let names = read_slot(&files, letter);
     if names.is_empty() {
@@ -42,7 +42,7 @@ pub fn slot_party_names(game_dir: impl AsRef<Path>, letter: char) -> Result<Vec<
         let hint = if populated.is_empty() {
             format!(
                 "no CHRDAT*.SAV files in {}. Save the game once inside it, then try again",
-                game_dir.as_ref().display()
+                save_dir.as_ref().display()
             )
         } else {
             format!(
@@ -61,8 +61,8 @@ pub fn slot_party_names(game_dir: impl AsRef<Path>, letter: char) -> Result<Vec<
 /// The game's own `SAVGAM{slot}.DAT` is deliberately not required: a slot
 /// missing it still holds readable characters, and refusing it would be
 /// guessing.
-pub fn populated_slots(game_dir: impl AsRef<Path>) -> Result<Vec<PopulatedSlot>, Error> {
-    let files = save_files(game_dir.as_ref())?;
+pub fn populated_slots(save_dir: impl AsRef<Path>) -> Result<Vec<PopulatedSlot>, Error> {
+    let files = save_files(save_dir.as_ref())?;
 
     let slots: Vec<PopulatedSlot> = SLOT_LETTERS
         .iter()
@@ -75,7 +75,7 @@ pub fn populated_slots(game_dir: impl AsRef<Path>) -> Result<Vec<PopulatedSlot>,
     if slots.is_empty() {
         return Err(Error::GameFolder(format!(
             "no CHRDAT*.SAV files in {}. Save the game once inside it, then try again",
-            game_dir.as_ref().display()
+            save_dir.as_ref().display()
         )));
     }
     Ok(slots)

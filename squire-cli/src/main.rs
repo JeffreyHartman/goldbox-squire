@@ -109,8 +109,8 @@ fn run() -> Result<(), String> {
         }
     }
     let install = config.installs[&key].clone();
-    let game_dir = install.save_dir();
-    let names = saves::slot_party_names(&game_dir, slot).map_err(|e| e.to_string())?;
+    let save_dir = install.save_dir();
+    let names = saves::slot_party_names(&save_dir, slot).map_err(|e| e.to_string())?;
     let game = games::find(&install.game)
         .ok_or_else(|| format!("unknown game `{}` in the config", install.game))?;
     let table = game.table.clone();
@@ -157,7 +157,7 @@ fn run() -> Result<(), String> {
         Some(&mut running),
         slot,
         names,
-        Some(&game_dir),
+        Some(&save_dir),
     )
 }
 
@@ -190,7 +190,7 @@ const HINT_AFTER: Duration = Duration::from_secs(10);
 /// how sessions end. Every read failure stays fatal and non-zero, so a
 /// permission error stays loud.
 ///
-/// `game_dir` enables repicking the save slot: Enter at any point returns to
+/// `save_dir` enables repicking the save slot: Enter at any point returns to
 /// the slot question and the watch resumes with the new slot's names. `None`
 /// (the `--pid` path) never prompts.
 fn watch<R: squire_core::mem::Reader>(
@@ -199,14 +199,14 @@ fn watch<R: squire_core::mem::Reader>(
     mut running: Option<&mut Launched>,
     mut slot: char,
     mut names: Vec<String>,
-    game_dir: Option<&Path>,
+    save_dir: Option<&Path>,
 ) -> Result<(), String> {
     let mut found_once = false;
     let mut searching_since = std::time::Instant::now();
     let mut hinted = false;
     // Once stdin hits end of file (a closed pipe), there is no keyboard to
     // listen to, and polling a fd at EOF would spin.
-    let mut stdin_open = game_dir.is_some();
+    let mut stdin_open = save_dir.is_some();
     eprintln!("gbs: waiting for the party of save slot {slot} to load...");
 
     loop {
@@ -259,7 +259,7 @@ fn watch<R: squire_core::mem::Reader>(
         // The pause doubles as the ear for Enter: wait on stdin readiness
         // with the poll cadence as the timeout, so a keypress is noticed at
         // once and no thread is added.
-        if !stdin_open || !enter_pressed(pause) {
+        if !stdin_open || !stdin_ready(pause) {
             continue;
         }
         let mut line = String::new();
@@ -271,7 +271,7 @@ fn watch<R: squire_core::mem::Reader>(
             Err(e) => return Err(format!("reading the keyboard: {e}")),
             Ok(_) => {}
         }
-        let dir = game_dir.expect("stdin_open starts false without a game_dir");
+        let dir = save_dir.expect("stdin_open starts false without a save_dir");
         if let Some((new_slot, new_names)) =
             wizard::repick_slot(&mut std::io::stdin().lock(), &mut std::io::stderr(), dir)?
         {
@@ -290,7 +290,7 @@ fn watch<R: squire_core::mem::Reader>(
 ///
 /// The user types nothing on most polls, so this times out and the cadence is
 /// exactly the sleep it replaced.
-fn enter_pressed(timeout: Duration) -> bool {
+fn stdin_ready(timeout: Duration) -> bool {
     use std::os::fd::AsFd;
     let stdin = std::io::stdin();
     let mut fds = [nix::poll::PollFd::new(
