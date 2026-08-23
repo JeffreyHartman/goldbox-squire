@@ -5,6 +5,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use squire_cli::args::{Args, USAGE};
+use squire_cli::wizard;
 use squire_cli::config::Config;
 use squire_cli::output;
 use squire_core::launch::{Emulator, Launched};
@@ -45,11 +46,43 @@ fn run() -> Result<(), String> {
         }
     }
 
-    let (_, install) = pick_install(&config, &args)?;
-    let install = install.clone();
-    let game_dir = install.save_dir();
+    // Find the user's installs, once. A normal run reads the cached results;
+    // the scan reruns only when there are none or a stored root vanished.
+    if config.installs.is_empty() || config.needs_rediscovery() {
+        let mut roots = squire_core::discover::default_roots();
+        roots.extend(config.extra_roots.iter().map(PathBuf::from));
+        if config.absorb(squire_core::discover::discover(&roots)) {
+            if let Err(e) = config.save() {
+                eprintln!("gbs: warning: could not save the settings: {e}");
+            }
+        }
+        if config.installs.is_empty() {
+            let searched: Vec<String> =
+                roots.iter().map(|r| r.display().to_string()).collect();
+            return Err(format!(
+                "no game install found. Searched:\n  {}\n\
+                 Point gbs at yours by hand once: \
+                 gbs --conf /path/to/your.conf --game-dir /path/to/POOLRAD",
+                searched.join("\n  ")
+            ));
+        }
+    }
 
-    let slot = pick_slot(&args, &game_dir)?;
+    let (key, slot) = wizard::choose(
+        &mut std::io::stdin().lock(),
+        &mut std::io::stderr(),
+        &config,
+        args.game.as_deref(),
+        args.slot,
+    )?;
+    if config.last_install.as_ref() != Some(&key) {
+        config.last_install = Some(key.clone());
+        if let Err(e) = config.save() {
+            eprintln!("gbs: warning: could not save the settings: {e}");
+        }
+    }
+    let install = config.installs[&key].clone();
+    let game_dir = install.save_dir();
     let names = saves::slot_party_names(&game_dir, slot).map_err(|e| e.to_string())?;
     let table = games::find(&install.game)
         .ok_or_else(|| format!("unknown game `{}` in the config", install.game))?
@@ -83,68 +116,6 @@ fn run() -> Result<(), String> {
 
     let mut session = Session::new(running.reader(), table, names);
     watch(&mut session, &args, Some(&mut running), slot)
-}
-
-/// The install this run uses. `--game` answers the question in advance; the
-/// remembered last choice answers it otherwise. The wizard (019) will ask when
-/// neither does.
-fn pick_install<'c>(
-    config: &'c Config,
-    args: &Args,
-) -> Result<(&'c String, &'c squire_cli::config::Install), String> {
-    if let Some(game) = &args.game {
-        if games::find(game).is_none() {
-            let known: Vec<String> = games::games().into_iter().map(|g| g.id).collect();
-            return Err(format!(
-                "unknown game `{game}`. Compiled-in games: {}",
-                known.join(", ")
-            ));
-        }
-        // Prefer the remembered install when it holds this game.
-        if let Some((key, install)) = config.last() {
-            if install.game == *game {
-                return Ok((key, install));
-            }
-        }
-        return config
-            .installs
-            .iter()
-            .find(|(_, i)| i.game == *game)
-            .ok_or_else(|| format!("no install of `{game}` is known. Run `gbs` to set one up."));
-    }
-    config
-        .last()
-        .ok_or_else(|| "no game folder set. Run `gbs --game-dir /path/to/POOLRAD` once.".into())
-}
-
-/// The save slot this run reads. `--slot` answers the question in advance and
-/// is validated against the populated slots. The wizard (019) will ask when
-/// the flag is absent; until then a lone populated slot is used and several
-/// are an error naming them.
-fn pick_slot(args: &Args, game_dir: &Path) -> Result<char, String> {
-    let slots = saves::populated_slots(game_dir).map_err(|e| e.to_string())?;
-    match args.slot {
-        Some(letter) => {
-            if slots.iter().any(|s| s.letter == letter) {
-                Ok(letter)
-            } else {
-                let populated: Vec<String> =
-                    slots.iter().map(|s| s.letter.to_string()).collect();
-                Err(format!(
-                    "save slot {letter} is empty. Populated slots: {}",
-                    populated.join(", ")
-                ))
-            }
-        }
-        None if slots.len() == 1 => Ok(slots[0].letter),
-        None => {
-            let populated: Vec<String> = slots.iter().map(|s| s.letter.to_string()).collect();
-            Err(format!(
-                "several save slots are populated: {}. Pass --slot <LETTER>.",
-                populated.join(", ")
-            ))
-        }
-    }
 }
 
 /// The folder the emulator starts in: the one holding the confs.
