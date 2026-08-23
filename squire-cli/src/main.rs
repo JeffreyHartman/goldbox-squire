@@ -43,7 +43,8 @@ fn run() -> Result<(), String> {
         .clone()
         .ok_or("no game folder set. Run `gbs --game-dir /path/to/POOLRAD` once.")?;
 
-    let names = saves::party_names(&game_dir).map_err(|e| e.to_string())?;
+    // Slot A until 018 adds --slot; A is where the old code always looked.
+    let names = saves::slot_party_names(&game_dir, 'A').map_err(|e| e.to_string())?;
     let table = Table::pool_of_radiance();
 
     // Attaching to an emulator this tool did not start is the unusual path. It
