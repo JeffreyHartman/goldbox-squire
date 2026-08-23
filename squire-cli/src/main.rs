@@ -7,6 +7,7 @@ use std::time::Duration;
 use squire_cli::args::{Args, USAGE};
 use squire_cli::wizard;
 use squire_cli::config::Config;
+use squire_cli::manual;
 use squire_cli::output;
 use squire_core::launch::{Emulator, Launched};
 use squire_core::mem::ProcessReader;
@@ -84,9 +85,9 @@ fn run() -> Result<(), String> {
     let install = config.installs[&key].clone();
     let game_dir = install.save_dir();
     let names = saves::slot_party_names(&game_dir, slot).map_err(|e| e.to_string())?;
-    let table = games::find(&install.game)
-        .ok_or_else(|| format!("unknown game `{}` in the config", install.game))?
-        .table;
+    let game = games::find(&install.game)
+        .ok_or_else(|| format!("unknown game `{}` in the config", install.game))?;
+    let table = game.table.clone();
 
     // Attaching to an emulator this tool did not start is the unusual path. It
     // needs a relaxed kernel.yama.ptrace_scope, so it is never the default.
@@ -94,6 +95,22 @@ fn run() -> Result<(), String> {
         let mut session = Session::new(ProcessReader::new(pid), table, names.clone());
         // No repicking: --pid is the automation path and must never prompt.
         return watch(&mut session, &args, None, slot, names, None);
+    }
+
+    // A hand-named folder can disagree with where the game's own DOS config
+    // points; refuse that before launching. Discovery cannot mis-name one.
+    manual::folder_name_check(&install, &game)?;
+
+    // The first use of an install names its conf files, once, so the user
+    // knows where the emulator settings live.
+    if let Some(note) = manual::first_run_note(&install) {
+        eprintln!("gbs: {note}");
+        if let Some(stored) = config.installs.get_mut(&key) {
+            stored.introduced = true;
+            if let Err(e) = config.save() {
+                eprintln!("gbs: warning: could not save the settings: {e}");
+            }
+        }
     }
 
     // The normal path. Starting the emulator is what makes the read permitted.

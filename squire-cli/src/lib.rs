@@ -2,5 +2,6 @@
 
 pub mod args;
 pub mod config;
+pub mod manual;
 pub mod output;
 pub mod wizard;
