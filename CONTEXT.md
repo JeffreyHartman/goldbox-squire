@@ -14,8 +14,10 @@ install knows which game it holds, where its saves are, which emulator
 configuration files start it, and in what order. Two installs of the same game
 can sit side by side.
 
-**Install kind.** Who laid the install out. GOG, Steam, and manual. Manual means
-the user named the pieces themselves rather than letting Squire find them.
+**Install kind.** Who laid the install out. GOG, Steam, found, and manual.
+Found means Squire recognized the shape but no launch script named a publisher.
+Manual means the user named the pieces themselves rather than letting Squire
+find them.
 
 **Save folder.** The folder inside an install holding the save files. The game
 writes here during play.

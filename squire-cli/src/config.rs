@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 pub enum InstallKind {
     Gog,
     Steam,
+    /// Discovered by shape, but no launch script named a publisher.
+    Found,
     /// The user named the pieces themselves rather than letting Squire find
     /// them.
     Manual,
@@ -26,6 +28,7 @@ impl std::fmt::Display for InstallKind {
         f.write_str(match self {
             InstallKind::Gog => "GOG",
             InstallKind::Steam => "Steam",
+            InstallKind::Found => "found",
             InstallKind::Manual => "manual",
         })
     }
@@ -168,6 +171,87 @@ impl Config {
     pub fn last(&self) -> Option<(&String, &Install)> {
         let key = self.last_install.as_ref()?;
         self.installs.get_key_value(key)
+    }
+
+    /// Writes discovery's results into the config, and reports whether that
+    /// changed what is stored.
+    ///
+    /// The results are a cache: a normal run reads them instead of scanning
+    /// the disk. A cached install whose root vanished is stale and dropped.
+    /// Manual installs are the user's own words and are never dropped.
+    pub fn absorb(&mut self, found: Vec<squire_core::discover::DiscoveredInstall>) -> bool {
+        use squire_core::discover::Publisher;
+
+        let before = self.clone();
+        self.installs.retain(|_, install| {
+            install.kind == InstallKind::Manual || PathBuf::from(&install.root).is_dir()
+        });
+
+        for d in found {
+            let kind = match d.publisher {
+                Some(Publisher::Gog) => InstallKind::Gog,
+                Some(Publisher::Steam) => InstallKind::Steam,
+                None => InstallKind::Found,
+            };
+            let root = d.root.to_string_lossy().into_owned();
+            let key = self.key_for(&root, &d.game_id, kind);
+            let introduced = self.installs.get(&key).map_or(false, |i| i.introduced);
+            self.installs.insert(
+                key,
+                Install {
+                    game: d.game_id,
+                    kind,
+                    root,
+                    saves: d.saves.to_string_lossy().into_owned(),
+                    confs: d.confs,
+                    emulator: d.emulator.map(|p| p.to_string_lossy().into_owned()),
+                    introduced,
+                },
+            );
+        }
+
+        // A last choice that no longer exists is no default at all.
+        if let Some(last) = &self.last_install {
+            if !self.installs.contains_key(last) {
+                self.last_install = None;
+            }
+        }
+        *self != before
+    }
+
+    /// Whether the cached discovery results went stale: some discovered
+    /// install's root no longer exists. A manual install never triggers a
+    /// rescan, because a scan cannot find what the user named by hand.
+    pub fn needs_rediscovery(&self) -> bool {
+        self.installs.values().any(|install| {
+            install.kind != InstallKind::Manual && !PathBuf::from(&install.root).is_dir()
+        })
+    }
+
+    /// The stable key for one discovered install. The same root keeps its key
+    /// across rediscoveries; a second install of the same game gets a suffix.
+    fn key_for(&self, root: &str, game: &str, kind: InstallKind) -> String {
+        if let Some((key, _)) = self
+            .installs
+            .iter()
+            .find(|(_, i)| i.root == root && i.game == game)
+        {
+            return key.clone();
+        }
+        let slug = match kind {
+            InstallKind::Gog => "gog",
+            InstallKind::Steam => "steam",
+            InstallKind::Found => "found",
+            InstallKind::Manual => "manual",
+        };
+        let base = format!("{slug}:{game}");
+        if !self.installs.contains_key(&base) {
+            return base;
+        }
+        (2..)
+            .map(|n| format!("{base}-{n}"))
+            .find(|key| !self.installs.contains_key(key))
+            .expect("some suffix is free")
     }
 
     /// Applies a hand-named setup from the command line, and reports whether

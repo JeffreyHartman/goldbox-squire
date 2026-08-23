@@ -154,3 +154,118 @@ fn no_config_field_stores_a_save_slot() {
 fn garbage_gives_an_error_not_a_panic() {
     assert!(Config::from_toml("this is not toml [[[").is_err());
 }
+
+// --- discovered installs are cached in the config ---------------------------
+
+use squire_core::discover::{DiscoveredInstall, Publisher};
+use std::path::PathBuf;
+
+fn tempdir(tag: &str) -> PathBuf {
+    let base = std::env::temp_dir().join(format!(
+        "gbs-config-{tag}-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+    base
+}
+
+fn discovered(root: &PathBuf, publisher: Option<Publisher>) -> DiscoveredInstall {
+    DiscoveredInstall {
+        game_id: "pool-of-radiance".into(),
+        publisher,
+        root: root.clone(),
+        saves: PathBuf::from("data/POOLRAD"),
+        confs: vec!["a.conf".into(), "b.conf".into()],
+        emulator: None,
+    }
+}
+
+#[test]
+fn a_discovered_install_is_written_into_the_config() {
+    let root = tempdir("absorb");
+    let mut config = Config::default();
+
+    let changed = config.absorb(vec![discovered(&root, Some(Publisher::Gog))]);
+
+    assert!(changed);
+    let install = &config.installs["gog:pool-of-radiance"];
+    assert_eq!(install.kind, InstallKind::Gog);
+    assert_eq!(install.root, root.to_string_lossy());
+    assert_eq!(install.saves, "data/POOLRAD");
+    assert_eq!(install.confs, vec!["a.conf", "b.conf"]);
+}
+
+#[test]
+fn absorbing_the_same_results_again_changes_nothing() {
+    let root = tempdir("absorb-twice");
+    let mut config = Config::default();
+    config.absorb(vec![discovered(&root, Some(Publisher::Steam))]);
+
+    let changed = config.absorb(vec![discovered(&root, Some(Publisher::Steam))]);
+
+    assert!(!changed, "a normal run must not rewrite the file");
+}
+
+#[test]
+fn a_vanished_root_asks_for_rediscovery() {
+    let root = tempdir("vanish");
+    let mut config = Config::default();
+    config.absorb(vec![discovered(&root, Some(Publisher::Gog))]);
+
+    assert!(!config.needs_rediscovery());
+    std::fs::remove_dir_all(&root).unwrap();
+    assert!(config.needs_rediscovery());
+}
+
+#[test]
+fn a_manual_install_never_triggers_rediscovery() {
+    // Manual means the user named the pieces; a scan cannot find them again,
+    // so a vanished manual root is the user's to fix, not a reason to rescan.
+    let text = r#"
+        [installs."manual:pool-of-radiance"]
+        game = "pool-of-radiance"
+        kind = "manual"
+        root = "/gone/away"
+        saves = ""
+        confs = ["por.conf"]
+    "#;
+    let config = Config::from_toml(text).unwrap();
+
+    assert!(!config.needs_rediscovery());
+}
+
+#[test]
+fn rediscovery_drops_a_cached_install_whose_root_vanished() {
+    let stays = tempdir("stays");
+    let goes = tempdir("goes");
+    let mut config = Config::default();
+    config.absorb(vec![discovered(&stays, Some(Publisher::Gog))]);
+    let mut second = discovered(&goes, Some(Publisher::Steam));
+    second.game_id = "pool-of-radiance".into();
+    config.absorb(vec![second]);
+    std::fs::remove_dir_all(&goes).unwrap();
+
+    config.absorb(vec![discovered(&stays, Some(Publisher::Gog))]);
+
+    assert!(config.installs.contains_key("gog:pool-of-radiance"));
+    assert!(
+        !config.installs.contains_key("steam:pool-of-radiance"),
+        "a cached result whose root vanished is stale, not remembered"
+    );
+}
+
+#[test]
+fn two_installs_of_the_same_kind_and_game_get_distinct_keys() {
+    let one = tempdir("dup-one");
+    let two = tempdir("dup-two");
+    let mut config = Config::default();
+
+    config.absorb(vec![
+        discovered(&one, Some(Publisher::Gog)),
+        discovered(&two, Some(Publisher::Gog)),
+    ]);
+
+    assert_eq!(config.installs.len(), 2, "{:?}", config.installs.keys());
+}
