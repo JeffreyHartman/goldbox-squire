@@ -12,8 +12,15 @@
 # class uses the same trick, and the party's own character screen confirmed it
 # live: raw 59, 56, 60, 58, 53, 56 showed as AC 1, 4, 0, 2, 7, 4.
 
+id = "pool-of-radiance"
 game = "Pool of Radiance"
+save_folder = "POOLRAD"
 record_len = 285   # offsets 0x000 through 0x11C
+
+# The game's own DOS config. Line 3 holds the data path, C:\POOLRAD\.
+[dos_config]
+file = "POOL.CFG"
+path_line = 3
 
 [[field]]
 name = "name"

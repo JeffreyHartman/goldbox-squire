@@ -3,6 +3,7 @@
 //! The crate knows nothing about a terminal, a window, or a compositor. A front
 //! end drives it and decides how to draw what it returns.
 
+pub mod games;
 pub mod launch;
 pub mod maps;
 pub mod mem;

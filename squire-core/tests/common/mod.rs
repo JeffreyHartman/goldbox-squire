@@ -21,9 +21,16 @@ pub fn saves() -> Vec<Vec<u8>> {
         .collect()
 }
 
+/// The Pool of Radiance record table, via the registry.
+pub fn table() -> squire_core::table::Table {
+    squire_core::games::find("pool-of-radiance")
+        .expect("Pool of Radiance is compiled in")
+        .table
+}
+
 /// The party's names, in marching order.
 pub fn names() -> Vec<String> {
-    let table = squire_core::table::Table::pool_of_radiance();
+    let table = table();
     saves()
         .iter()
         .map(|s| squire_core::record::decode(&table, s).unwrap().name)

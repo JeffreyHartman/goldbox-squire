@@ -9,7 +9,7 @@ use squire_cli::output;
 use squire_core::launch::Emulator;
 use squire_core::mem::ProcessReader;
 use squire_core::session::Session;
-use squire_core::{saves, table::Table};
+use squire_core::{games, saves};
 
 fn main() -> ExitCode {
     match run() {
@@ -45,7 +45,9 @@ fn run() -> Result<(), String> {
 
     // Slot A until 018 adds --slot; A is where the old code always looked.
     let names = saves::slot_party_names(&game_dir, 'A').map_err(|e| e.to_string())?;
-    let table = Table::pool_of_radiance();
+    let table = games::find("pool-of-radiance")
+        .expect("Pool of Radiance is compiled in")
+        .table;
 
     // Attaching to an emulator this tool did not start is the unusual path. It
     // needs a relaxed kernel.yama.ptrace_scope, so it is never the default.

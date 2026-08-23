@@ -76,17 +76,7 @@ pub struct Table {
     pub enums: BTreeMap<String, BTreeMap<String, String>>,
 }
 
-const POOL_OF_RADIANCE: &str = include_str!("../tables/pool-of-radiance.toml");
-
 impl Table {
-    /// The table for Pool of Radiance, compiled into the binary.
-    ///
-    /// This cannot fail on a correct build. `validate` runs over the same file
-    /// in the test suite, so a typo fails the tests rather than reaching a user.
-    pub fn pool_of_radiance() -> Table {
-        Table::from_toml(POOL_OF_RADIANCE).expect("the built-in table is valid")
-    }
-
     /// Parses a table and checks that it describes a possible record.
     pub fn from_toml(text: &str) -> Result<Table, Error> {
         let table: Table = toml::from_str(text).map_err(|e| Error::Table(e.to_string()))?;

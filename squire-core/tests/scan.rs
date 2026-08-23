@@ -3,7 +3,7 @@ use squire_core::scan;
 use squire_core::table::Table;
 
 fn table() -> Table {
-    Table::pool_of_radiance()
+    squire_core::games::find("pool-of-radiance").unwrap().table
 }
 
 mod common;

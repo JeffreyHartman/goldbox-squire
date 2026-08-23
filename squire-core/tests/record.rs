@@ -1,7 +1,6 @@
 mod common;
 
 use squire_core::record::{self, Character};
-use squire_core::table::Table;
 
 /// Builds a record byte-by-byte, so the expected values in a test come from the
 /// test itself and never from the code under test.
@@ -51,7 +50,7 @@ impl RecordBuilder {
 }
 
 fn decode(bytes: &[u8]) -> Character {
-    record::decode(&Table::pool_of_radiance(), bytes).unwrap()
+    record::decode(&common::table(), bytes).unwrap()
 }
 
 #[test]
@@ -118,7 +117,7 @@ fn reads_a_two_byte_age_least_significant_byte_first() {
 fn a_slice_shorter_than_the_record_is_an_error_not_a_panic() {
     let short = vec![0u8; 100];
 
-    let err = record::decode(&Table::pool_of_radiance(), &short).unwrap_err();
+    let err = record::decode(&common::table(), &short).unwrap_err();
 
     assert!(err.to_string().contains("285"), "got: {err}");
 }
@@ -128,7 +127,7 @@ fn a_slice_shorter_than_the_record_is_an_error_not_a_panic() {
 // candidate to a confirmed record.
 
 fn is_valid(bytes: &[u8]) -> bool {
-    record::validate(&Table::pool_of_radiance(), bytes).is_ok()
+    record::validate(&common::table(), bytes).is_ok()
 }
 
 #[test]
@@ -264,7 +263,7 @@ fn every_real_save_file_passes_validation() {
     let saves = real_saves();
 
     for (i, bytes) in saves.iter().enumerate() {
-        let result = record::validate(&Table::pool_of_radiance(), bytes);
+        let result = record::validate(&common::table(), bytes);
         assert!(
             result.is_ok(),
             "CHRDATA{}.SAV rejected: {:?}",
