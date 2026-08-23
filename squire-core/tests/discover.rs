@@ -52,7 +52,7 @@ fn finds_a_gog_shaped_tree() {
     let base = tempdir();
     gog_tree(&base);
 
-    let found = discover::discover(&[base.clone()]);
+    let found = discover::discover(std::slice::from_ref(&base));
 
     assert_eq!(found.len(), 1);
     let install = &found[0];
@@ -71,7 +71,7 @@ fn finds_a_steam_shaped_tree() {
     let base = tempdir();
     steam_tree(&base);
 
-    let found = discover::discover(&[base.clone()]);
+    let found = discover::discover(std::slice::from_ref(&base));
 
     assert_eq!(found.len(), 1);
     let install = &found[0];
@@ -95,7 +95,7 @@ fn a_tree_with_no_launch_script_puts_the_autoexec_conf_last() {
     conf(&root, "aaa_game.conf", true); // alphabetically first, runs last
     conf(&root, "zzz_settings.conf", false);
 
-    let found = discover::discover(&[base.clone()]);
+    let found = discover::discover(std::slice::from_ref(&base));
 
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].publisher, None);
@@ -109,7 +109,7 @@ fn a_tree_without_save_files_is_not_an_install() {
     mkdir(&root.join("data/POOLRAD"));
     conf(&root, "dosbox.conf", true);
 
-    assert!(discover::discover(&[base.clone()]).is_empty());
+    assert!(discover::discover(std::slice::from_ref(&base)).is_empty());
 }
 
 #[test]
@@ -120,7 +120,7 @@ fn a_tree_whose_conf_has_no_autoexec_mount_is_not_an_install() {
     write_save(&root.join("data/POOLRAD"), "CHRDATA1.SAV", "HERO");
     std::fs::write(root.join("dosbox.conf"), "[sdl]\nfullscreen=false\n").unwrap();
 
-    assert!(discover::discover(&[base.clone()]).is_empty());
+    assert!(discover::discover(std::slice::from_ref(&base)).is_empty());
 }
 
 #[test]
@@ -129,12 +129,12 @@ fn the_scan_stops_four_levels_below_a_root() {
     let deep = base.join("a/b/c/d/e");
     gog_tree(&deep); // the install sits five levels down, one too far
 
-    assert!(discover::discover(&[base.clone()]).is_empty());
+    assert!(discover::discover(std::slice::from_ref(&base)).is_empty());
 
     let shallow = tempdir();
     let ok = shallow.join("a/b/c");
     gog_tree(&ok); // "Pool of Radiance" is the fourth level: found
-    assert_eq!(discover::discover(&[shallow.clone()]).len(), 1);
+    assert_eq!(discover::discover(std::slice::from_ref(&shallow)).len(), 1);
 }
 
 #[test]
@@ -142,7 +142,7 @@ fn a_bundled_emulator_wins_over_path() {
     let base = tempdir();
     let root = gog_tree(&base);
 
-    let found = discover::discover(&[base.clone()]);
+    let found = discover::discover(std::slice::from_ref(&base));
 
     assert_eq!(
         found[0].emulator.as_deref(),
@@ -156,7 +156,7 @@ fn an_install_without_a_bundled_emulator_names_none() {
     let base = tempdir();
     steam_tree(&base);
 
-    let found = discover::discover(&[base.clone()]);
+    let found = discover::discover(std::slice::from_ref(&base));
 
     assert_eq!(found[0].emulator, None, "PATH is the fallback, decided later");
 }

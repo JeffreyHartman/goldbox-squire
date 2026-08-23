@@ -247,3 +247,22 @@ fn keeps_reading_the_right_character_after_one_of_them_levels_up() {
     assert_eq!(party.characters[0].level, 2);
     assert_eq!(party.characters[0].hit_points_maximum, 19);
 }
+
+#[test]
+fn retargeting_hunts_the_new_names_and_forgets_the_old_anchors() {
+    // The user picked the wrong slot and chose again mid-watch. The session
+    // must search for the new party, not keep reporting the old one.
+    let (mem, saves, _) = emulator_with_party();
+    let mut session = Session::new(
+        mem,
+        common::table(),
+        vec!["NOBODY BY THIS NAME".to_string()],
+    );
+    assert_eq!(session.party().unwrap().state, PartyState::NotFound);
+
+    session.retarget(names(&saves));
+
+    let party = session.party().unwrap();
+    assert_eq!(party.state, PartyState::Live);
+    assert_eq!(party.characters.len(), 6);
+}

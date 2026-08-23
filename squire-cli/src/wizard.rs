@@ -75,6 +75,29 @@ pub fn choose<R: BufRead, W: Write>(
     }
 }
 
+/// Re-asks the slot question mid-watch.
+///
+/// Returns the new slot and its party names, or `None` when the user backed
+/// out, which means keep watching the slot already chosen.
+pub fn repick_slot<R: BufRead, W: Write>(
+    input: &mut R,
+    output: &mut W,
+    game_dir: &std::path::Path,
+) -> Result<Option<(char, Vec<String>)>, String> {
+    let slots = saves::populated_slots(game_dir).map_err(|e| e.to_string())?;
+    match ask_slot(input, output, &slots)? {
+        Answer::Picked(letter) => {
+            let names = slots
+                .into_iter()
+                .find(|s| s.letter == letter)
+                .expect("ask_slot only returns populated letters")
+                .names;
+            Ok(Some((letter, names)))
+        }
+        Answer::Back => Ok(None),
+    }
+}
+
 /// Turns `--game` into an install key without asking anything.
 fn resolve_game(config: &Config, game: &str) -> Result<String, String> {
     if games::find(game).is_none() {

@@ -91,8 +91,9 @@ fn run() -> Result<(), String> {
     // Attaching to an emulator this tool did not start is the unusual path. It
     // needs a relaxed kernel.yama.ptrace_scope, so it is never the default.
     if let Some(pid) = args.pid {
-        let mut session = Session::new(ProcessReader::new(pid), table, names);
-        return watch(&mut session, &args, None, slot);
+        let mut session = Session::new(ProcessReader::new(pid), table, names.clone());
+        // No repicking: --pid is the automation path and must never prompt.
+        return watch(&mut session, &args, None, slot, names, None);
     }
 
     // The normal path. Starting the emulator is what makes the read permitted.
@@ -114,8 +115,15 @@ fn run() -> Result<(), String> {
         log.display()
     );
 
-    let mut session = Session::new(running.reader(), table, names);
-    watch(&mut session, &args, Some(&mut running), slot)
+    let mut session = Session::new(running.reader(), table, names.clone());
+    watch(
+        &mut session,
+        &args,
+        Some(&mut running),
+        slot,
+        names,
+        Some(&game_dir),
+    )
 }
 
 /// The folder the emulator starts in: the one holding the confs.
@@ -136,19 +144,34 @@ fn log_path() -> PathBuf {
         .unwrap_or_else(|| std::env::temp_dir().join("gbs-emulator.log"))
 }
 
+/// How long the watch hunts a party before naming its assumption: which slot
+/// it is looking for, and that Enter chooses a different one.
+const HINT_AFTER: Duration = Duration::from_secs(10);
+
 /// Redraws the party until the emulator exits or the user stops the tool.
 ///
 /// The emulator ending is not an error: both publishers' autoexecs end in
 /// `exit`, so quitting the game closes DOSBox in every normal setup. This is
 /// how sessions end. Every read failure stays fatal and non-zero, so a
 /// permission error stays loud.
+///
+/// `game_dir` enables repicking the save slot: Enter at any point returns to
+/// the slot question and the watch resumes with the new slot's names. `None`
+/// (the `--pid` path) never prompts.
 fn watch<R: squire_core::mem::Reader>(
     session: &mut Session<R>,
     args: &Args,
     mut running: Option<&mut Launched>,
-    slot: char,
+    mut slot: char,
+    mut names: Vec<String>,
+    game_dir: Option<&Path>,
 ) -> Result<(), String> {
     let mut found_once = false;
+    let mut searching_since = std::time::Instant::now();
+    let mut hinted = false;
+    // Once stdin hits end of file (a closed pipe), there is no keyboard to
+    // listen to, and polling a fd at EOF would spin.
+    let mut stdin_open = game_dir.is_some();
     eprintln!("gbs: waiting for the party of save slot {slot} to load...");
 
     loop {
@@ -163,6 +186,17 @@ fn watch<R: squire_core::mem::Reader>(
             Ok(party) => {
                 if party.state == PartyState::NotFound && !found_once {
                     // Still waiting: the game is booting or sits in a menu.
+                    // After a while, the missing party may mean a wrong pick,
+                    // so name the assumption instead of hunting forever.
+                    if !hinted && searching_since.elapsed() >= HINT_AFTER {
+                        eprintln!(
+                            "gbs: still looking for save slot {slot}'s party ({}). \
+                             If another save is loaded, press Enter to choose a \
+                             different slot.",
+                            names.join(", ")
+                        );
+                        hinted = true;
+                    }
                 } else {
                     found_once = true;
                     if !args.json {
@@ -186,7 +220,56 @@ fn watch<R: squire_core::mem::Reader>(
         } else {
             WAITING_POLL
         };
-        std::thread::sleep(pause);
+
+        // The pause doubles as the ear for Enter: wait on stdin readiness
+        // with the poll cadence as the timeout, so a keypress is noticed at
+        // once and no thread is added.
+        if !stdin_open || !enter_pressed(pause) {
+            continue;
+        }
+        let mut line = String::new();
+        match std::io::stdin().read_line(&mut line) {
+            Ok(0) => {
+                stdin_open = false;
+                continue;
+            }
+            Err(e) => return Err(format!("reading the keyboard: {e}")),
+            Ok(_) => {}
+        }
+        let dir = game_dir.expect("stdin_open starts false without a game_dir");
+        if let Some((new_slot, new_names)) =
+            wizard::repick_slot(&mut std::io::stdin().lock(), &mut std::io::stderr(), dir)?
+        {
+            slot = new_slot;
+            names = new_names;
+            session.retarget(names.clone());
+            found_once = false;
+            hinted = false;
+            searching_since = std::time::Instant::now();
+            eprintln!("gbs: waiting for the party of save slot {slot} to load...");
+        }
+    }
+}
+
+/// Waits up to `timeout` for stdin to have something to read.
+///
+/// The user types nothing on most polls, so this times out and the cadence is
+/// exactly the sleep it replaced.
+fn enter_pressed(timeout: Duration) -> bool {
+    use std::os::fd::AsFd;
+    let stdin = std::io::stdin();
+    let mut fds = [nix::poll::PollFd::new(
+        stdin.as_fd(),
+        nix::poll::PollFlags::POLLIN,
+    )];
+    let ms = u16::try_from(timeout.as_millis()).unwrap_or(u16::MAX);
+    match nix::poll::poll(&mut fds, nix::poll::PollTimeout::from(ms)) {
+        Ok(n) => n > 0,
+        // A signal or a odd terminal is not worth dying over; keep polling.
+        Err(_) => {
+            std::thread::sleep(timeout);
+            false
+        }
     }
 }
 

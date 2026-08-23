@@ -195,7 +195,7 @@ impl Config {
             };
             let root = d.root.to_string_lossy().into_owned();
             let key = self.key_for(&root, &d.game_id, kind);
-            let introduced = self.installs.get(&key).map_or(false, |i| i.introduced);
+            let introduced = self.installs.get(&key).is_some_and(|i| i.introduced);
             self.installs.insert(
                 key,
                 Install {

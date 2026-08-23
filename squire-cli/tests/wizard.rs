@@ -3,7 +3,7 @@
 //! No terminal is involved: input is plain lines in, prompts are lines out.
 
 use std::io::Cursor;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use squire_cli::config::{Config, Install, InstallKind};
 use squire_cli::wizard;
@@ -177,7 +177,7 @@ fn an_unknown_game_argument_names_the_compiled_in_games() {
 
 // --- helpers -----------------------------------------------------------------
 
-fn install(kind: InstallKind, saves_dir: &PathBuf) -> Install {
+fn install(kind: InstallKind, saves_dir: &Path) -> Install {
     Install {
         game: "pool-of-radiance".into(),
         kind,
@@ -200,9 +200,44 @@ fn tempdir(tag: &str) -> PathBuf {
     base
 }
 
-fn write_save(dir: &PathBuf, file: &str, name: &str) {
+fn write_save(dir: &Path, file: &str, name: &str) {
     let mut bytes = vec![0u8; 285];
     bytes[0] = name.len() as u8;
     bytes[1..1 + name.len()].copy_from_slice(name.as_bytes());
     std::fs::write(dir.join(file), bytes).unwrap();
+}
+
+// --- repicking the slot mid-watch (ticket 020) -------------------------------
+
+#[test]
+fn repicking_returns_the_new_slot_and_its_names() {
+    let dir = tempdir("repick");
+    write_save(&dir, "CHRDATA1.SAV", "ALPHA");
+    write_save(&dir, "CHRDATJ1.SAV", "JULIET");
+
+    let mut output = Vec::new();
+    let picked = wizard::repick_slot(
+        &mut Cursor::new(b"J\n".to_vec()),
+        &mut output,
+        &dir,
+    )
+    .unwrap();
+
+    assert_eq!(picked, Some(('J', vec!["JULIET".to_string()])));
+}
+
+#[test]
+fn backing_out_of_a_repick_keeps_the_current_slot() {
+    let dir = tempdir("repick-back");
+    write_save(&dir, "CHRDATA1.SAV", "ALPHA");
+
+    let mut output = Vec::new();
+    let picked = wizard::repick_slot(
+        &mut Cursor::new(b"b\n".to_vec()),
+        &mut output,
+        &dir,
+    )
+    .unwrap();
+
+    assert_eq!(picked, None, "b means keep watching the slot already chosen");
 }

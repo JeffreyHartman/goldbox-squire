@@ -146,6 +146,7 @@ dependencies = [
 name = "squire-cli"
 version = "0.1.0"
 dependencies = [
+ "nix",
  "serde",
  "serde_json",
  "squire-core",

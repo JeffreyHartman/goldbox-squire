@@ -171,11 +171,11 @@ fn tempdir(tag: &str) -> PathBuf {
     base
 }
 
-fn discovered(root: &PathBuf, publisher: Option<Publisher>) -> DiscoveredInstall {
+fn discovered(root: &std::path::Path, publisher: Option<Publisher>) -> DiscoveredInstall {
     DiscoveredInstall {
         game_id: "pool-of-radiance".into(),
         publisher,
-        root: root.clone(),
+        root: root.to_path_buf(),
         saves: PathBuf::from("data/POOLRAD"),
         confs: vec!["a.conf".into(), "b.conf".into()],
         emulator: None,

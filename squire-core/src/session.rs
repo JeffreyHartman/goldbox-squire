@@ -58,6 +58,16 @@ impl<R: Reader> Session<R> {
         }
     }
 
+    /// Points the session at a different party: new names, fresh search.
+    ///
+    /// The user picked a save slot and can choose again mid-watch. The old
+    /// anchors belong to the old names, so they are dropped, and the next
+    /// [`Session::party`] call scans.
+    pub fn retarget(&mut self, names: Vec<String>) {
+        self.names = names;
+        self.anchors.clear();
+    }
+
     pub fn reader(&self) -> &R {
         &self.reader
     }
