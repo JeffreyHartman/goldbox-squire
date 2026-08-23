@@ -60,10 +60,30 @@ fn run() -> Result<(), String> {
     // The normal path. Starting the emulator is what makes the read permitted.
     let mut emulator = Emulator::new(install.emulator.as_deref().unwrap_or("dosbox"));
     for conf in &install.confs {
-        emulator = emulator.arg("-conf").arg(conf);
+        emulator = emulator.conf(conf);
     }
+    // Both publishers' autoexecs use relative mounts, so the emulator must
+    // start in the folder holding the confs. For a manual install that is the
+    // conf's own folder; the root is the save folder there.
+    let conf_dir = match install.confs.first().map(std::path::Path::new) {
+        Some(conf) if conf.is_absolute() => conf
+            .parent()
+            .map(std::path::Path::to_path_buf)
+            .unwrap_or_else(|| std::path::PathBuf::from(&install.root)),
+        _ => std::path::PathBuf::from(&install.root),
+    };
+    emulator = emulator.current_dir(&conf_dir);
+    let log = Config::path()
+        .and_then(|p| p.parent().map(|d| d.join("emulator.log")))
+        .unwrap_or_else(|| std::env::temp_dir().join("gbs-emulator.log"));
+    emulator = emulator.log_to(&log);
+
     let mut running = emulator.start().map_err(|e| e.to_string())?;
-    eprintln!("gbs: started the emulator as process {}", running.pid());
+    eprintln!(
+        "gbs: started the emulator as process {}. Its messages go to {}",
+        running.pid(),
+        log.display()
+    );
 
     let mut session = Session::new(running.reader(), table, names);
     let result = report(&mut session, &args);

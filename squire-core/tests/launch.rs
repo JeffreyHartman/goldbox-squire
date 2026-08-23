@@ -143,3 +143,97 @@ fn passes_the_configuration_file_through_as_an_argument() {
 
     assert_eq!(e.args(), &["-conf", "/tmp/por.conf"]);
 }
+
+// --- launching an install, not a bare emulator (ticket 017) -----------------
+
+fn temp_path(tag: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!(
+        "gbs-launch-{tag}-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ))
+}
+
+/// Waits for a file to hold some content, since the child writes it.
+fn read_soon(path: &std::path::Path) -> String {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        if let Ok(text) = std::fs::read_to_string(path) {
+            if !text.is_empty() {
+                return text;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    panic!("{} never got content", path.display());
+}
+
+#[test]
+fn each_conf_is_passed_in_order() {
+    let e = Emulator::new("dosbox")
+        .conf("base.conf")
+        .conf("graphics.conf")
+        .conf("game.conf");
+
+    assert_eq!(
+        e.args(),
+        &[
+            "-conf", "base.conf", "-conf", "graphics.conf", "-conf", "game.conf"
+        ]
+    );
+}
+
+#[test]
+fn the_child_runs_in_the_given_working_directory() {
+    // Both publishers' autoexecs use relative mounts, so the emulator must
+    // start inside the install or the mount fails.
+    let dir = temp_path("cwd");
+    std::fs::create_dir_all(&dir).unwrap();
+    let log = temp_path("cwd-log");
+    let _ = std::fs::remove_file(&log);
+
+    let mut running = Emulator::new("pwd")
+        .current_dir(&dir)
+        .log_to(&log)
+        .start()
+        .unwrap();
+
+    let printed = read_soon(&log);
+    // The temp dir can be a symlink (macOS style); canonical forms compare.
+    let want = std::fs::canonicalize(&dir).unwrap();
+    let got = std::fs::canonicalize(printed.trim()).unwrap();
+    assert_eq!(got, want);
+    running.stop().unwrap();
+}
+
+#[test]
+fn child_output_lands_in_the_log_file() {
+    let log = temp_path("output-log");
+    let _ = std::fs::remove_file(&log);
+
+    let mut running = Emulator::new("echo")
+        .arg("dosbox says hello")
+        .log_to(&log)
+        .start()
+        .unwrap();
+
+    assert_eq!(read_soon(&log).trim(), "dosbox says hello");
+    running.stop().unwrap();
+}
+
+#[test]
+fn the_childs_stdin_is_null() {
+    // `cat` with a real stdin blocks forever; with a null one it sees EOF and
+    // exits at once. gbs owns the keyboard, the emulator gets its own window.
+    let log = temp_path("stdin-log");
+    let mut running = Emulator::new("cat").log_to(&log).start().unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        if !running.is_running() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    panic!("cat is still waiting on stdin, so stdin was not null");
+}

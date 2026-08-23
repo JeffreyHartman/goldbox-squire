@@ -13,6 +13,7 @@
 
 use std::ffi::OsStr;
 use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
 use crate::mem::ProcessReader;
@@ -23,6 +24,8 @@ use crate::Error;
 pub struct Emulator {
     program: OsString,
     args: Vec<OsString>,
+    current_dir: Option<PathBuf>,
+    log: Option<PathBuf>,
 }
 
 impl Emulator {
@@ -32,12 +35,37 @@ impl Emulator {
         Emulator {
             program: program.as_ref().to_owned(),
             args: Vec::new(),
+            current_dir: None,
+            log: None,
         }
     }
 
     /// Adds one argument.
     pub fn arg(mut self, arg: impl AsRef<OsStr>) -> Self {
         self.args.push(arg.as_ref().to_owned());
+        self
+    }
+
+    /// Adds one configuration file. Call once per file, in launch order:
+    /// later files override earlier ones.
+    pub fn conf(self, path: impl AsRef<OsStr>) -> Self {
+        self.arg("-conf").arg(path)
+    }
+
+    /// Sets the folder the emulator starts in. Both publishers' autoexecs use
+    /// relative mounts, so this must be the folder holding the confs.
+    pub fn current_dir(mut self, dir: impl AsRef<Path>) -> Self {
+        self.current_dir = Some(dir.as_ref().to_owned());
+        self
+    }
+
+    /// Sends the child's stdout and stderr to this file.
+    ///
+    /// Without it they are inherited, which lets the emulator print over the
+    /// party table. The log keeps a failed launch diagnosable; name its path
+    /// in the launch message so the messages stay reachable.
+    pub fn log_to(mut self, path: impl AsRef<Path>) -> Self {
+        self.log = Some(path.as_ref().to_owned());
         self
     }
 
@@ -51,19 +79,33 @@ impl Emulator {
 
     /// Starts the emulator and returns a handle to it.
     pub fn start(self) -> Result<Launched, Error> {
-        let child = Command::new(&self.program)
-            .args(&self.args)
-            // The emulator keeps the terminal, so its own messages reach the
-            // user unchanged.
-            .stdin(Stdio::inherit())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .map_err(|source| Error::CannotStart {
-                program: self.program.to_string_lossy().into_owned(),
-                source,
-            })?;
+        let cannot_start = |source| Error::CannotStart {
+            program: self.program.to_string_lossy().into_owned(),
+            source,
+        };
 
+        let mut command = Command::new(&self.program);
+        command.args(&self.args);
+        if let Some(dir) = &self.current_dir {
+            command.current_dir(dir);
+        }
+        // The child never gets the terminal's stdin: gbs owns the keyboard,
+        // the emulator gets its own window.
+        command.stdin(Stdio::null());
+        match &self.log {
+            Some(path) => {
+                let log = std::fs::File::create(path).map_err(cannot_start)?;
+                let log2 = log.try_clone().map_err(cannot_start)?;
+                command.stdout(log).stderr(log2);
+            }
+            // Without a log the output stays on the terminal, which suits a
+            // caller that runs no interface of its own.
+            None => {
+                command.stdout(Stdio::inherit()).stderr(Stdio::inherit());
+            }
+        }
+
+        let child = command.spawn().map_err(cannot_start)?;
         Ok(Launched { child })
     }
 }
