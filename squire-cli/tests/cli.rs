@@ -1,6 +1,6 @@
 //! The command line contract: what the arguments mean, and what is printed.
 
-use squire_cli::args::{Args, Mode};
+use squire_cli::args::Args;
 use squire_cli::output;
 use squire_core::record::Character;
 use squire_core::session::{Party, PartyState};
@@ -25,15 +25,39 @@ fn json_selects_machine_readable_output() {
 }
 
 #[test]
-fn watch_redraws_until_stopped() {
-    let a = parse(&["--watch"]).unwrap();
+fn watch_is_not_a_flag_because_watching_is_what_the_tool_does() {
+    let err = parse(&["--watch"]).unwrap_err();
 
-    assert_eq!(a.mode, Mode::Watch);
+    assert!(err.contains("--watch"), "got: {err}");
+    assert!(err.contains("--help"), "the error points at the usage: {err}");
 }
 
 #[test]
-fn without_watch_the_party_is_printed_once() {
-    assert_eq!(parse(&[]).unwrap().mode, Mode::Once);
+fn the_game_can_be_named_in_advance() {
+    let a = parse(&["--game", "pool-of-radiance"]).unwrap();
+
+    assert_eq!(a.game.as_deref(), Some("pool-of-radiance"));
+}
+
+#[test]
+fn the_save_slot_can_be_named_in_advance() {
+    let a = parse(&["--slot", "J"]).unwrap();
+
+    assert_eq!(a.slot, Some('J'));
+}
+
+#[test]
+fn a_lowercase_slot_letter_is_accepted() {
+    assert_eq!(parse(&["--slot", "j"]).unwrap().slot, Some('J'));
+}
+
+#[test]
+fn a_slot_that_is_not_a_letter_a_through_j_is_rejected() {
+    let err = parse(&["--slot", "K"]).unwrap_err();
+    assert!(err.contains('K'), "got: {err}");
+
+    let err = parse(&["--slot", "AB"]).unwrap_err();
+    assert!(err.contains("AB"), "got: {err}");
 }
 
 #[test]
@@ -73,9 +97,10 @@ fn a_pid_that_is_not_a_number_is_rejected() {
 }
 
 #[test]
-fn help_is_a_mode_and_not_an_error() {
-    assert_eq!(parse(&["--help"]).unwrap().mode, Mode::Help);
-    assert_eq!(parse(&["-h"]).unwrap().mode, Mode::Help);
+fn help_is_asked_for_and_not_an_error() {
+    assert!(parse(&["--help"]).unwrap().help);
+    assert!(parse(&["-h"]).unwrap().help);
+    assert!(!parse(&[]).unwrap().help);
 }
 
 // --- output ----------------------------------------------------------------

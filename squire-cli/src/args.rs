@@ -1,25 +1,20 @@
 //! The command line arguments.
 //!
-//! Parsed by hand. The tool has nine flags, and a hand-written parser keeps the
+//! Parsed by hand. The tool has ten flags, and a hand-written parser keeps the
 //! dependency list short enough to read in one sitting.
+//!
+//! There is no `--watch`: watching is what the tool does. An argument that is
+//! required to make the program work is not an argument.
 
 use std::fmt;
-
-/// What the tool was asked to do.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Mode {
-    /// Print the party once, then exit.
-    #[default]
-    Once,
-    /// Redraw until the user stops it.
-    Watch,
-    /// Print the usage text.
-    Help,
-}
 
 /// Everything the command line said.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Args {
+    /// Answers the wizard's first question in advance: which game.
+    pub game: Option<String>,
+    /// Answers the second: which save slot, a letter A through J.
+    pub slot: Option<char>,
     pub game_dir: Option<String>,
     pub dosbox: Option<String>,
     pub conf: Option<String>,
@@ -27,8 +22,8 @@ pub struct Args {
     /// `kernel.yama.ptrace_scope`, so it is not the normal path.
     pub pid: Option<i32>,
     pub json: bool,
-    pub mode: Mode,
-    /// Milliseconds between redraws in watch mode.
+    pub help: bool,
+    /// Milliseconds between redraws once a party was found.
     pub interval_ms: u64,
 }
 
@@ -50,19 +45,27 @@ gbs — Goldbox Squire. Shows the live party of an SSI Gold Box game.
 USAGE:
     gbs [OPTIONS]
 
+A bare `gbs` picks the install and the save slot, starts the game, waits for
+the party, and redraws it until the emulator exits or you stop it. Each option
+below answers one of those questions in advance.
+
 OPTIONS:
-    --game-dir <DIR>   The folder holding the game and its CHRDATA*.SAV files.
-                       Stored in the config file, so it is needed once.
-    --dosbox <CMD>     The emulator to start. Default: dosbox
-    --conf <FILE>      A configuration file to pass to the emulator.
+    --game <ID>        Which game to run, by its id (pool-of-radiance).
+    --slot <A-J>       Which save slot to read. Asked every run otherwise,
+                       because a slot describes one sitting.
+    --interval <MS>    Milliseconds between redraws. Default: 500
+    --json             Print JSON rather than a table.
     --pid <PID>        Read an emulator this tool did not start. This works
                        only where the system already permits it, and gbs will
                        say so if it does not. Letting gbs start the game is
                        the supported path and needs no system change.
-    --watch            Redraw until stopped, rather than printing once.
-    --interval <MS>    Milliseconds between redraws. Default: 500
-    --json             Print JSON rather than a table.
     -h, --help         Print this text.
+
+MANUAL SETUP, when discovery does not find your install:
+    --game-dir <DIR>   The folder holding the game's CHRDATA*.SAV files.
+    --conf <FILE>      The DOSBox configuration file that starts the game.
+    --dosbox <CMD>     The emulator to start. Default: dosbox
+    The three are remembered as a manual install, so they are given once.
 
 Goldbox Squire starts the emulator itself. That is what makes reading its
 memory permitted without changing any system setting.
@@ -83,6 +86,11 @@ impl Args {
                     .ok_or_else(|| ArgError(format!("{flag} needs a value")))
             };
             match arg.as_str() {
+                "--game" => args.game = Some(value("--game")?),
+                "--slot" => {
+                    let raw = value("--slot")?;
+                    args.slot = Some(parse_slot(&raw)?);
+                }
                 "--game-dir" => args.game_dir = Some(value("--game-dir")?),
                 "--dosbox" => args.dosbox = Some(value("--dosbox")?),
                 "--conf" => args.conf = Some(value("--conf")?),
@@ -100,8 +108,7 @@ impl Args {
                         .map_err(|_| ArgError(format!("--interval needs a number, got `{raw}`")))?;
                 }
                 "--json" => args.json = true,
-                "--watch" => args.mode = Mode::Watch,
-                "-h" | "--help" => args.mode = Mode::Help,
+                "-h" | "--help" => args.help = true,
                 other => {
                     return Err(ArgError(format!(
                         "unknown option `{other}`. Run `gbs --help` for the list."
@@ -112,4 +119,21 @@ impl Args {
 
         Ok(args)
     }
+}
+
+/// A save slot is one letter, A through J.
+fn parse_slot(raw: &str) -> Result<char, ArgError> {
+    let mut chars = raw.chars();
+    let (Some(letter), None) = (chars.next(), chars.next()) else {
+        return Err(ArgError(format!(
+            "--slot needs one letter A through J, got `{raw}`"
+        )));
+    };
+    let letter = letter.to_ascii_uppercase();
+    if !letter.is_ascii_uppercase() || letter > 'J' {
+        return Err(ArgError(format!(
+            "--slot needs one letter A through J, got `{raw}`"
+        )));
+    }
+    Ok(letter)
 }
