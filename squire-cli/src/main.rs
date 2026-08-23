@@ -5,6 +5,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use squire_cli::args::{Args, USAGE};
+use squire_cli::attach;
 use squire_cli::wizard;
 use squire_cli::config::Config;
 use squire_cli::manual;
@@ -37,10 +38,35 @@ fn run() -> Result<(), String> {
         return Ok(());
     }
 
+    let mut config = Config::load();
+
+    // Attaching to an emulator this tool did not start is the unusual path.
+    // It needs a relaxed kernel.yama.ptrace_scope, so it is never the
+    // default, and it is the automation path: no wizard, no launch, no
+    // discovery, and nothing written to the config.
+    if let Some(pid) = args.pid {
+        let resolved = attach::resolve(&args, &config)?;
+        let table = games::find(&resolved.game_id)
+            .expect("resolve validated the game id")
+            .table;
+        let mut session = Session::new(
+            ProcessReader::new(pid),
+            table,
+            resolved.names.clone(),
+        );
+        return watch(
+            &mut session,
+            &args,
+            None,
+            resolved.slot,
+            resolved.names,
+            None,
+        );
+    }
+
     // The command line wins over the config file, and what it says is then
     // remembered as a manual install, so a setting is given once rather than
     // every run.
-    let mut config = Config::load();
     if config.remember_manual(&args) {
         if let Err(e) = config.save() {
             eprintln!("gbs: warning: could not save the settings: {e}");
@@ -88,14 +114,6 @@ fn run() -> Result<(), String> {
     let game = games::find(&install.game)
         .ok_or_else(|| format!("unknown game `{}` in the config", install.game))?;
     let table = game.table.clone();
-
-    // Attaching to an emulator this tool did not start is the unusual path. It
-    // needs a relaxed kernel.yama.ptrace_scope, so it is never the default.
-    if let Some(pid) = args.pid {
-        let mut session = Session::new(ProcessReader::new(pid), table, names.clone());
-        // No repicking: --pid is the automation path and must never prompt.
-        return watch(&mut session, &args, None, slot, names, None);
-    }
 
     // A hand-named folder can disagree with where the game's own DOS config
     // points; refuse that before launching. Discovery cannot mis-name one.
