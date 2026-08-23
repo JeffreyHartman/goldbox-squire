@@ -30,23 +30,24 @@ fn run() -> Result<(), String> {
     }
 
     // The command line wins over the config file, and what it says is then
-    // remembered, so that a setting is given once rather than every run.
+    // remembered as a manual install, so a setting is given once rather than
+    // every run.
     let mut config = Config::load();
-    if config.merge(&args) {
+    if config.remember_manual(&args) {
         if let Err(e) = config.save() {
             eprintln!("gbs: warning: could not save the settings: {e}");
         }
     }
 
-    let game_dir = config
-        .game_dir
-        .clone()
+    let (_, install) = config
+        .last()
         .ok_or("no game folder set. Run `gbs --game-dir /path/to/POOLRAD` once.")?;
+    let game_dir = install.save_dir();
 
     // Slot A until 018 adds --slot; A is where the old code always looked.
     let names = saves::slot_party_names(&game_dir, 'A').map_err(|e| e.to_string())?;
-    let table = games::find("pool-of-radiance")
-        .expect("Pool of Radiance is compiled in")
+    let table = games::find(&install.game)
+        .ok_or_else(|| format!("unknown game `{}` in the config", install.game))?
         .table;
 
     // Attaching to an emulator this tool did not start is the unusual path. It
@@ -57,8 +58,8 @@ fn run() -> Result<(), String> {
     }
 
     // The normal path. Starting the emulator is what makes the read permitted.
-    let mut emulator = Emulator::new(config.dosbox.as_deref().unwrap_or("dosbox"));
-    if let Some(conf) = &config.conf {
+    let mut emulator = Emulator::new(install.emulator.as_deref().unwrap_or("dosbox"));
+    for conf in &install.confs {
         emulator = emulator.arg("-conf").arg(conf);
     }
     let mut running = emulator.start().map_err(|e| e.to_string())?;
