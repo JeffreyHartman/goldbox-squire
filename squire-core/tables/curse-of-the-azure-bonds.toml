@@ -1,0 +1,335 @@
+# Character record layout for Curse of the Azure Bonds.
+#
+# Source: docs/gbc/Resources/Character file formats/02. Curse of the Azure Bonds.txt
+# from Gold Box Companion v2.65, cross-checked against the game-by-game
+# comparison in `Offsets compared.txt` next to it.
+#
+# UNVERIFIED against a live game: no install of it was on hand when this
+# table was written. The offsets and enums are the documented ones; the
+# game folder and the sixty-minus transform await a real install.
+#
+# This file describes only the fields that Goldbox Squire reads or validates.
+# The record holds more. Add a field here rather than adding code.
+
+id = "curse-of-the-azure-bonds"
+game = "Curse of the Azure Bonds"
+game_folder = "CURSE"   # unverified
+start = "START.EXE"
+machine = "ega"
+record_len = 422   # offsets 0x000 through 0x1A5
+
+# One file per character: CHRDAT{slot}{index}.SAV in the save folder
+[saves]
+shape = "chrdat"
+extension = "SAV"
+
+[[field]]
+name = "name"
+offset = 0x000
+len = 16          # one length byte, then fifteen characters
+kind = "pascal_string"
+
+[[field]]
+name = "strength"
+offset = 0x011
+len = 1
+kind = "u8"
+
+[[field]]
+name = "intelligence"
+offset = 0x013
+len = 1
+kind = "u8"
+
+[[field]]
+name = "wisdom"
+offset = 0x015
+len = 1
+kind = "u8"
+
+[[field]]
+name = "dexterity"
+offset = 0x017
+len = 1
+kind = "u8"
+
+[[field]]
+name = "constitution"
+offset = 0x019
+len = 1
+kind = "u8"
+
+[[field]]
+name = "charisma"
+offset = 0x01B
+len = 1
+kind = "u8"
+
+[[field]]
+name = "strength_exceptional"
+offset = 0x01D
+len = 1
+kind = "u8"
+
+[[field]]
+name = "thac0_base"
+offset = 0x073
+len = 1
+kind = "u8"
+transform = "sixty_minus"
+
+[[field]]
+name = "race"
+offset = 0x074
+len = 1
+kind = "u8"
+enum = "race"
+
+[[field]]
+name = "class"
+offset = 0x075
+len = 1
+kind = "u8"
+enum = "class"
+
+[[field]]
+name = "age"
+offset = 0x076
+len = 2
+kind = "u16le"
+
+[[field]]
+name = "hit_points_maximum"
+offset = 0x078
+len = 1
+kind = "u8"
+
+[[field]]
+name = "attack_level"
+offset = 0x0DD
+len = 1
+kind = "u8"
+
+[[field]]
+name = "save_paralyze"
+offset = 0x0DF
+len = 1
+kind = "u8"
+
+[[field]]
+name = "save_petrify"
+offset = 0x0E0
+len = 1
+kind = "u8"
+
+[[field]]
+name = "save_wand"
+offset = 0x0E1
+len = 1
+kind = "u8"
+
+[[field]]
+name = "save_breath"
+offset = 0x0E2
+len = 1
+kind = "u8"
+
+[[field]]
+name = "save_spell"
+offset = 0x0E3
+len = 1
+kind = "u8"
+
+[[field]]
+name = "movement_base"
+offset = 0x0E4
+len = 1
+kind = "u8"
+
+[[field]]
+name = "drained_levels"
+offset = 0x0E7
+len = 1
+kind = "u8"
+
+[[field]]
+name = "drained_hit_points"
+offset = 0x0E8
+len = 1
+kind = "u8"
+
+[[field]]
+name = "coins_gold"
+offset = 0x101
+len = 2
+kind = "u16le"
+
+[[field]]
+name = "level_cleric"
+offset = 0x109
+len = 1
+kind = "u8"
+
+[[field]]
+name = "level_druid"
+offset = 0x10A
+len = 1
+kind = "u8"
+
+[[field]]
+name = "level_fighter"
+offset = 0x10B
+len = 1
+kind = "u8"
+
+[[field]]
+name = "level_paladin"
+offset = 0x10C
+len = 1
+kind = "u8"
+
+[[field]]
+name = "level_ranger"
+offset = 0x10D
+len = 1
+kind = "u8"
+
+[[field]]
+name = "level_mage"
+offset = 0x10E
+len = 1
+kind = "u8"
+
+[[field]]
+name = "level_thief"
+offset = 0x10F
+len = 1
+kind = "u8"
+
+[[field]]
+name = "level_monk"
+offset = 0x110
+len = 1
+kind = "u8"
+
+[[field]]
+name = "gender"
+offset = 0x119
+len = 1
+kind = "u8"
+enum = "gender"
+
+[[field]]
+name = "alignment"
+offset = 0x11B
+len = 1
+kind = "u8"
+enum = "alignment"
+
+[[field]]
+name = "armor_class_base"
+offset = 0x124
+len = 1
+kind = "u8"
+transform = "sixty_minus"
+
+[[field]]
+name = "experience"
+offset = 0x127
+len = 4
+kind = "u32le"
+
+[[field]]
+name = "item_limits"
+offset = 0x12B
+len = 1
+kind = "u8"
+
+[[field]]
+name = "status"
+offset = 0x195
+len = 1
+kind = "u8"
+enum = "status"
+
+[[field]]
+name = "thac0_current"
+offset = 0x199
+len = 1
+kind = "u8"
+transform = "sixty_minus"
+
+[[field]]
+name = "armor_class_current"
+offset = 0x19A
+len = 1
+kind = "u8"
+transform = "sixty_minus"
+
+[[field]]
+name = "hit_points_current"
+offset = 0x1A4
+len = 1
+kind = "u8"
+
+[[field]]
+name = "movement_current"
+offset = 0x1A5
+len = 1
+kind = "u8"
+
+[enums.race]
+0x00 = "monster"
+0x01 = "dwarf"
+0x02 = "elf"
+0x03 = "gnome"
+0x04 = "half-elf"
+0x05 = "halfling"
+0x06 = "half-orc"
+0x07 = "human"
+
+[enums.gender]
+0x00 = "male"
+0x01 = "female"
+
+[enums.class]
+0x00 = "cleric"
+0x01 = "druid"
+0x02 = "fighter"
+0x03 = "paladin"
+0x04 = "ranger"
+0x05 = "mage"
+0x06 = "thief"
+0x07 = "monk"
+0x08 = "cleric/fighter"
+0x09 = "cleric/fighter/mage"
+0x0A = "cleric/ranger"
+0x0B = "cleric/mage"
+0x0C = "cleric/thief"
+0x0D = "fighter/mage"
+0x0E = "fighter/thief"
+0x0F = "fighter/mage/thief"
+0x10 = "mage/thief"
+0x11 = "illegal type"
+
+[enums.alignment]
+0x00 = "lawful good"
+0x01 = "lawful neutral"
+0x02 = "lawful evil"
+0x03 = "neutral good"
+0x04 = "true neutral"
+0x05 = "neutral evil"
+0x06 = "chaotic good"
+0x07 = "chaotic neutral"
+0x08 = "chaotic evil"
+
+[enums.status]
+0x00 = "okay"
+0x01 = "animated"
+0x02 = "tempgone"
+0x03 = "running"
+0x04 = "unconscious"
+0x05 = "dying"
+0x06 = "dead"
+0x07 = "stoned"
+0x08 = "gone"

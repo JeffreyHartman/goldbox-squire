@@ -48,9 +48,11 @@ USAGE:
     gbs [OPTIONS]
 
 A bare `gbs` asks which game, where it is (the first time only; the answer is
-remembered per game), and which save slot. Then it starts the game, waits for
-the party, and redraws it until the emulator exits or you stop it. Each option
-below answers one of those questions in advance. In the menus, 0 goes back.
+remembered per game), and which save slot. Unlimited Adventures keeps saves
+per adventure module, so it gets one more question: which adventure. Then gbs
+starts the game, waits for the party, and redraws it until the emulator exits
+or you stop it. Each option below answers one of those questions in advance.
+In the menus, 0 goes back.
 
 OPTIONS:
     --game <ID>        Which game to run, by its id (pool-of-radiance).

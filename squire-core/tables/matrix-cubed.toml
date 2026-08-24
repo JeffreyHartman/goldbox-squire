@@ -1,0 +1,260 @@
+# Character record layout for Matrix Cubed.
+#
+# Source: docs/gbc/Resources/Character file formats/12. Matrix Cubed.txt
+# from Gold Box Companion v2.65, cross-checked against the game-by-game
+# comparison in `Offsets compared.txt` next to it.
+#
+# UNVERIFIED against a live game: no install of it was on hand when this
+# table was written. The offsets and enums are the documented ones; the
+# game folder and the sixty-minus transform (assumed from the engine family) await a real install.
+#
+# This file describes only the fields that Goldbox Squire reads or validates.
+# The record holds more. Add a field here rather than adding code.
+
+id = "matrix-cubed"
+game = "Matrix Cubed"
+game_folder = "MATRIX"   # unverified
+start = "START.EXE"
+machine = "svga_s3"
+record_len = 259   # offsets 0x000 through 0x102
+
+# One file per character: CHRDAT{slot}{index}.SAV in the save folder
+[saves]
+shape = "chrdat"
+extension = "SAV"
+
+[[field]]
+name = "name"
+offset = 0x000
+len = 16          # one length byte, then fifteen characters
+kind = "pascal_string"
+
+[[field]]
+name = "strength"
+offset = 0x010
+len = 1
+kind = "u8"
+
+[[field]]
+name = "intelligence"
+offset = 0x013
+len = 1
+kind = "u8"
+
+[[field]]
+name = "wisdom"
+offset = 0x014
+len = 1
+kind = "u8"
+
+[[field]]
+name = "dexterity"
+offset = 0x011
+len = 1
+kind = "u8"
+
+[[field]]
+name = "constitution"
+offset = 0x012
+len = 1
+kind = "u8"
+
+[[field]]
+name = "charisma"
+offset = 0x015
+len = 1
+kind = "u8"
+
+[[field]]
+name = "thac0_base"
+offset = 0x033
+len = 1
+kind = "u8"
+transform = "sixty_minus"
+
+[[field]]
+name = "race"
+offset = 0x027
+len = 1
+kind = "u8"
+enum = "race"
+
+[[field]]
+name = "class"
+offset = 0x028
+len = 1
+kind = "u8"
+enum = "class"
+
+[[field]]
+name = "age"
+offset = 0x038
+len = 1
+kind = "u8"
+
+[[field]]
+name = "hit_points_maximum"
+offset = 0x045
+len = 1
+kind = "u8"
+
+[[field]]
+name = "save_1"
+offset = 0x01E
+len = 1
+kind = "u8"
+
+[[field]]
+name = "save_2"
+offset = 0x01F
+len = 1
+kind = "u8"
+
+[[field]]
+name = "save_3"
+offset = 0x020
+len = 1
+kind = "u8"
+
+[[field]]
+name = "save_4"
+offset = 0x021
+len = 1
+kind = "u8"
+
+[[field]]
+name = "save_5"
+offset = 0x022
+len = 1
+kind = "u8"
+
+[[field]]
+name = "save_6"
+offset = 0x023
+len = 1
+kind = "u8"
+
+[[field]]
+name = "save_7"
+offset = 0x024
+len = 1
+kind = "u8"
+
+[[field]]
+name = "save_8"
+offset = 0x025
+len = 1
+kind = "u8"
+
+[[field]]
+name = "movement_base"
+offset = 0x036
+len = 1
+kind = "u8"
+
+[[field]]
+name = "coins_credit"
+offset = 0x02B
+len = 2
+kind = "u16le"
+
+[[field]]
+name = "level_highest_1"
+offset = 0x029
+len = 1
+kind = "u8"
+
+[[field]]
+name = "gender"
+offset = 0x026
+len = 1
+kind = "u8"
+enum = "gender"
+
+[[field]]
+name = "armor_class_base"
+offset = 0x037
+len = 1
+kind = "u8"
+transform = "sixty_minus"
+
+[[field]]
+name = "experience"
+offset = 0x02F
+len = 4
+kind = "u32le"
+
+[[field]]
+name = "status"
+offset = 0x0D4
+len = 1
+kind = "u8"
+enum = "status"
+
+[[field]]
+name = "thac0_current"
+offset = 0x0D8
+len = 1
+kind = "u8"
+transform = "sixty_minus"
+
+[[field]]
+name = "armor_class_current"
+offset = 0x0D9
+len = 1
+kind = "u8"
+transform = "sixty_minus"
+
+[[field]]
+name = "hit_points_current"
+offset = 0x0E3
+len = 1
+kind = "u8"
+
+[[field]]
+name = "movement_current"
+offset = 0x0E5
+len = 1
+kind = "u8"
+
+[enums.race]
+0x00 = "monster"
+0x01 = "terran"
+0x02 = "martian"
+0x03 = "venusian"
+0x04 = "mercurian"
+0x05 = "tinker"
+0x06 = "desert runner"
+0x07 = "lunarian"
+0x08 = "lowlander"
+
+[enums.gender]
+0x00 = "male"
+0x01 = "female"
+
+[enums.class]
+0x00 = "-"
+0x01 = "rocketjock"
+0x02 = "medic"
+0x03 = "warrior"
+0x04 = "engineer"
+0x05 = "rogue"
+0x06 = "scout"
+
+# The Buck Rogers engine numbers status differently: okay is 1.
+[enums.status]
+0x00 = "-"
+0x01 = "okay"
+0x02 = "gone"
+0x03 = "dead"
+0x04 = "dying"
+0x05 = "unconscious"
+0x06 = "fleeing"
+0x07 = "poisoned"
+0x08 = "comatose"
+0x09 = "not here"
+0x0A = "dodging"
+0x0B = "sprinting"
+0x0C = "failed zerog"
+0x0D = "used jetpack"
+0x0E = "jetpack"

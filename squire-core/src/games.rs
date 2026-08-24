@@ -93,8 +93,19 @@ struct Meta {
     saves: Saves,
 }
 
+// In release order, which is also the wizard's menu order.
 const TABLES: &[&str] = &[
     include_str!("../tables/pool-of-radiance.toml"),
+    include_str!("../tables/curse-of-the-azure-bonds.toml"),
+    include_str!("../tables/secret-of-the-silver-blades.toml"),
+    include_str!("../tables/pools-of-darkness.toml"),
+    include_str!("../tables/champions-of-krynn.toml"),
+    include_str!("../tables/death-knights-of-krynn.toml"),
+    include_str!("../tables/the-dark-queen-of-krynn.toml"),
+    include_str!("../tables/gateway-to-the-savage-frontier.toml"),
+    include_str!("../tables/treasures-of-the-savage-frontier.toml"),
+    include_str!("../tables/countdown-to-doomsday.toml"),
+    include_str!("../tables/matrix-cubed.toml"),
     include_str!("../tables/unlimited-adventures.toml"),
 ];
 

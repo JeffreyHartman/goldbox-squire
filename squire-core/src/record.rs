@@ -44,8 +44,9 @@ pub struct Character {
 /// table holds the ones its game has: the Krynn games and Unlimited
 /// Adventures add a knight, and the Buck Rogers games store no per-class
 /// levels at all, only `level_highest_1`.
-const LEVEL_FIELDS: [&str; 9] = [
+const LEVEL_FIELDS: [&str; 10] = [
     "level_cleric",
+    "level_druid",
     "level_fighter",
     "level_paladin",
     "level_ranger",
@@ -95,7 +96,7 @@ pub fn decode(table: &Table, bytes: &[u8]) -> Result<Character, Error> {
         armor_class: shown_at(table, bytes, "armor_class_current").unwrap_or(0),
         thac0: shown_at(table, bytes, "thac0_current").unwrap_or(0),
         experience: u32_at(table, bytes, "experience").unwrap_or(0),
-        age: u16_at(table, bytes, "age").unwrap_or(0),
+        age: age_at(table, bytes).unwrap_or(0),
         strength: u8_at(table, bytes, "strength").unwrap_or(0),
         strength_exceptional: u8_at(table, bytes, "strength_exceptional").unwrap_or(0),
         intelligence: u8_at(table, bytes, "intelligence").unwrap_or(0),
@@ -290,6 +291,16 @@ fn shown_at(table: &Table, bytes: &[u8], name: &str) -> Option<i16> {
         Some(crate::table::Transform::SixtyMinus) => 60 - raw,
         None => raw,
     })
+}
+
+/// The age, whatever width this game stores it at. The Buck Rogers games
+/// keep it in one byte; every other game uses two.
+fn age_at(table: &Table, bytes: &[u8]) -> Option<u16> {
+    let f = table.field("age")?;
+    match f.kind {
+        FieldKind::U8 => u8_at(table, bytes, "age").map(u16::from),
+        _ => u16_at(table, bytes, "age"),
+    }
 }
 
 fn u16_at(table: &Table, bytes: &[u8], name: &str) -> Option<u16> {

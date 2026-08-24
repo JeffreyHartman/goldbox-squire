@@ -6,8 +6,8 @@ glossary and nothing else: no offsets, no module names, no decisions.
 ## The game on disk
 
 **Game.** One of the twelve SSI Gold Box titles. A game has an id used in
-configuration and on the command line, a display name, and a character record
-layout. Pool of Radiance is a game.
+configuration and on the command line, a display name, a character record
+layout, and a save shape. Pool of Radiance is a game.
 
 **Install.** One copy of one game on disk: a game directory and which game it
 holds. Two installs of the same game can sit side by side, and each game
@@ -28,7 +28,20 @@ the computed autoexec enters it to start the game.
 
 **Save folder.** The folder inside an install holding the save files. The game
 writes here during play. GOG's game folder is also its save folder; Steam
-nests a `SAVE` folder inside the game folder.
+nests a `SAVE` folder inside the game folder. A game with designs has one
+save folder per design.
+
+**Save shape.** How a game writes a save slot to disk. Ten games write one
+file per character (`CHRDAT` plus slot letter and character index); Unlimited
+Adventures and The Dark Queen of Krynn write the whole party into one party
+file. The shape is data in the game's table, like the record layout.
+
+**Party file.** One save slot's whole party in a single file, named `SAVGAM`
+plus the slot letter. Reading it yields the party's names in marching order.
+
+**Design.** One Unlimited Adventures adventure module, a `.DSN` folder inside
+the game folder, each with its own save folder. The wizard asks which design
+every run, like the slot: both describe one sitting.
 
 **Save slot.** One saved game, named by a letter A through J. This is what the
 player picks in the game's own load menu. GOG ships slots A and J populated.

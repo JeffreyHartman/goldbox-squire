@@ -14,6 +14,30 @@ fn the_registry_lists_pool_of_radiance() {
 }
 
 #[test]
+fn all_twelve_gold_box_games_are_compiled_in() {
+    let ids: Vec<String> = games::games().into_iter().map(|g| g.id).collect();
+
+    assert_eq!(
+        ids,
+        vec![
+            "pool-of-radiance",
+            "curse-of-the-azure-bonds",
+            "secret-of-the-silver-blades",
+            "pools-of-darkness",
+            "champions-of-krynn",
+            "death-knights-of-krynn",
+            "the-dark-queen-of-krynn",
+            "gateway-to-the-savage-frontier",
+            "treasures-of-the-savage-frontier",
+            "countdown-to-doomsday",
+            "matrix-cubed",
+            "unlimited-adventures",
+        ],
+        "in release order, which is the wizard's menu order"
+    );
+}
+
+#[test]
 fn a_game_is_found_by_its_id() {
     let por = games::find("pool-of-radiance").unwrap();
 
