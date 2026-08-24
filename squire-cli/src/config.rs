@@ -64,19 +64,28 @@ impl Install {
         }
     }
 
-    /// The command that starts this install's emulator.
+    /// The command that starts this install's emulator, given what the PATH
+    /// search found.
     ///
     /// A manual install runs whatever `--dosbox` named, because the user said
-    /// so. A discovered install runs the system `dosbox` when there is one:
-    /// GOG's bundled DOSBox 0.74 needs libraries current distros no longer
-    /// ship, and its wrapper script exits 0 even when the binary fails to
-    /// load, so the breakage cannot be detected. The bundle is only the
-    /// fallback for a machine with no dosbox installed.
-    pub fn emulator_command(&self, dosbox_on_path: bool) -> String {
-        if self.kind != InstallKind::Manual && dosbox_on_path {
-            return "dosbox".into();
-        }
-        self.emulator.clone().unwrap_or_else(|| "dosbox".into())
+    /// so. A discovered install runs the system emulator: GOG's bundled
+    /// DOSBox 0.74 needs libraries current distros no longer ship, and its
+    /// wrapper script exits 0 even when the binary fails to load, so the
+    /// breakage cannot be detected. A stored path is the last resort either
+    /// way, and nothing at all is an error naming the way out.
+    pub fn emulator_command(&self, system: Option<&str>) -> Result<String, String> {
+        let stored = self.emulator.as_deref();
+        let picked = if self.kind == InstallKind::Manual {
+            stored.or(system)
+        } else {
+            system.or(stored)
+        };
+        picked.map(String::from).ok_or_else(|| {
+            format!(
+                "no emulator found. gbs looked on PATH for {}.                  Name yours with --dosbox <CMD>.",
+                crate::emulator::NAMES.join(", ")
+            )
+        })
     }
 }
 

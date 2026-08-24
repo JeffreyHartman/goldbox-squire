@@ -132,7 +132,10 @@ fn run() -> Result<(), String> {
     }
 
     // The normal path. Starting the emulator is what makes the read permitted.
-    let command = install.emulator_command(dosbox_on_path());
+    let command = match args.dosbox.as_deref() {
+        Some(named) => named.to_string(),
+        None => install.emulator_command(squire_cli::emulator::find())?,
+    };
     let mut emulator = Emulator::new(&command);
     for conf in &install.confs {
         emulator = emulator.conf(conf);
@@ -160,23 +163,6 @@ fn run() -> Result<(), String> {
         names,
         Some(&save_dir),
     )
-}
-
-/// Whether a `dosbox` executable is on PATH. When one is, a discovered
-/// install runs it instead of its bundled emulator; see
-/// `Install::emulator_command`.
-fn dosbox_on_path() -> bool {
-    use std::os::unix::fs::PermissionsExt;
-
-    let Some(path) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&path).any(|dir| {
-        let bin = dir.join("dosbox");
-        std::fs::metadata(bin)
-            .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-            .unwrap_or(false)
-    })
 }
 
 /// The folder the emulator starts in: the one holding the confs.

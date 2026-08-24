@@ -3,6 +3,7 @@
 pub mod args;
 pub mod attach;
 pub mod config;
+pub mod emulator;
 pub mod manual;
 pub mod output;
 pub mod wizard;

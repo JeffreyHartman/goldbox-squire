@@ -274,8 +274,9 @@ fn two_installs_of_the_same_kind_and_game_get_distinct_keys() {
 //
 // Field-tested on a real GOG install: the bundled DOSBox 0.74 needs libraries
 // a current distro no longer ships, and GOG's wrapper script exits 0 even when
-// the binary fails to load. The system dosbox is the one the user keeps
-// working, so it wins; the bundle is the fallback for a machine without one.
+// the binary fails to load. The system emulator is the one the user keeps
+// working, so it wins for discovered installs; a manual install's stored
+// choice wins for that install (ADR 0003, ticket 024).
 
 fn install(kind: InstallKind, emulator: Option<&str>) -> Install {
     Install {
@@ -290,33 +291,50 @@ fn install(kind: InstallKind, emulator: Option<&str>) -> Install {
 }
 
 #[test]
-fn a_discovered_install_prefers_the_system_dosbox() {
+fn a_discovered_install_prefers_the_system_emulator() {
     let install = install(InstallKind::Gog, Some("/game/dosbox/dosbox"));
 
-    assert_eq!(install.emulator_command(true), "dosbox");
+    assert_eq!(
+        install.emulator_command(Some("dosbox-staging")).unwrap(),
+        "dosbox-staging"
+    );
 }
 
 #[test]
-fn a_discovered_install_falls_back_to_its_bundled_emulator() {
+fn a_discovered_install_falls_back_to_a_stored_emulator() {
+    // An old config can still carry a bundled emulator path; with no system
+    // emulator it is better than nothing.
     let install = install(InstallKind::Gog, Some("/game/dosbox/dosbox"));
 
-    assert_eq!(install.emulator_command(false), "/game/dosbox/dosbox");
+    assert_eq!(
+        install.emulator_command(None).unwrap(),
+        "/game/dosbox/dosbox"
+    );
 }
 
 #[test]
 fn a_manual_install_uses_its_chosen_emulator_over_the_system_one() {
     // The user named this emulator with --dosbox; that choice is not second-
     // guessed.
-    let install = install(InstallKind::Manual, Some("dosbox-staging"));
+    let install = install(InstallKind::Manual, Some("my-dosbox"));
 
-    assert_eq!(install.emulator_command(true), "dosbox-staging");
+    assert_eq!(install.emulator_command(Some("dosbox")).unwrap(), "my-dosbox");
 }
 
 #[test]
-fn no_emulator_anywhere_still_says_dosbox() {
-    // The launch will fail with the command name in the error, which is the
-    // honest message for a machine with nothing installed.
+fn a_manual_install_without_a_stored_choice_takes_the_system_one() {
+    let install = install(InstallKind::Manual, None);
+
+    assert_eq!(install.emulator_command(Some("dosbox")).unwrap(), "dosbox");
+}
+
+#[test]
+fn no_emulator_anywhere_is_an_error_naming_the_names_and_the_flag() {
     let install = install(InstallKind::Steam, None);
 
-    assert_eq!(install.emulator_command(false), "dosbox");
+    let err = install.emulator_command(None).unwrap_err();
+
+    for expected in ["dosbox", "dosbox-staging", "dosbox-x", "--dosbox"] {
+        assert!(err.contains(expected), "missing {expected} in: {err}");
+    }
 }
