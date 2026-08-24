@@ -61,11 +61,10 @@ fn a_slot_that_is_not_a_letter_a_through_j_is_rejected() {
 }
 
 #[test]
-fn the_emulator_command_and_its_config_can_be_set() {
-    let a = parse(&["--dosbox", "dosbox-staging", "--conf", "/tmp/por.conf"]).unwrap();
+fn the_emulator_command_can_be_set() {
+    let a = parse(&["--dosbox", "dosbox-staging"]).unwrap();
 
     assert_eq!(a.dosbox.as_deref(), Some("dosbox-staging"));
-    assert_eq!(a.conf.as_deref(), Some("/tmp/por.conf"));
 }
 
 #[test]

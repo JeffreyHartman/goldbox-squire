@@ -55,35 +55,6 @@ pub fn folder_name_check(install: &Install, game: &Game) -> Result<(), String> {
     ))
 }
 
-/// The one-time line naming the conf files a manual install launches.
-///
-/// Squire never writes into a game install and never owns emulator settings
-/// (ADR 0001), so the user is told once where those settings live.
-pub fn first_run_note(install: &Install) -> Option<String> {
-    if install.introduced || install.confs.is_empty() {
-        return None;
-    }
-    let confs: Vec<String> = install
-        .confs
-        .iter()
-        .map(|conf| {
-            let path = Path::new(conf);
-            if path.is_absolute() {
-                conf.clone()
-            } else {
-                PathBuf::from(&install.root)
-                    .join(conf)
-                    .to_string_lossy()
-                    .into_owned()
-            }
-        })
-        .collect();
-    Some(format!(
-        "launching with {}. Emulator settings live in there and are yours to edit.",
-        confs.join(", ")
-    ))
-}
-
 /// Finds a file by name in a folder, whatever case its name is written in.
 fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
     let direct = dir.join(name);

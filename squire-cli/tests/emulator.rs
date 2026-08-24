@@ -63,3 +63,30 @@ fn executable(path: &Path) {
     std::fs::write(path, "#!/bin/sh\n").unwrap();
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
+
+// --- precedence (ticket 027) ---------------------------------------------------
+
+#[test]
+fn the_argument_beats_the_config_beats_the_path_search() {
+    assert_eq!(
+        emulator::command(Some("arg"), Some("cfg"), Some("dosbox")).unwrap(),
+        "arg"
+    );
+    assert_eq!(
+        emulator::command(None, Some("cfg"), Some("dosbox")).unwrap(),
+        "cfg"
+    );
+    assert_eq!(
+        emulator::command(None, None, Some("dosbox")).unwrap(),
+        "dosbox"
+    );
+}
+
+#[test]
+fn nothing_anywhere_is_an_error_naming_the_names_and_the_flag() {
+    let err = emulator::command(None, None, None).unwrap_err();
+
+    for expected in ["dosbox", "dosbox-staging", "dosbox-x", "--dosbox"] {
+        assert!(err.contains(expected), "missing {expected} in: {err}");
+    }
+}

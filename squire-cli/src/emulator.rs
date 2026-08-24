@@ -29,3 +29,22 @@ pub fn find_on_path(path: &OsStr) -> Option<&'static str> {
 pub fn find() -> Option<&'static str> {
     std::env::var_os("PATH").and_then(|path| find_on_path(&path))
 }
+
+/// The command a launch uses. `--dosbox` wins for the run, the config's
+/// `dosbox` field wins permanently, then the PATH search, then an error
+/// naming the way out.
+pub fn command(
+    arg: Option<&str>,
+    configured: Option<&str>,
+    system: Option<&str>,
+) -> Result<String, String> {
+    arg.or(configured)
+        .or(system)
+        .map(String::from)
+        .ok_or_else(|| {
+            format!(
+                "no emulator found. gbs looked on PATH for {}. Name yours with --dosbox <CMD>.",
+                NAMES.join(", ")
+            )
+        })
+}

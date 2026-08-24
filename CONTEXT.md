@@ -9,14 +9,18 @@ glossary and nothing else: no offsets, no module names, no decisions.
 configuration and on the command line, a display name, and a character record
 layout. Pool of Radiance is a game.
 
-**Install.** One copy of one game on disk, as a publisher laid it out. An
-install knows which game it holds and where its saves are. Two installs of the
-same game can sit side by side.
+**Install.** One copy of one game on disk: a game directory and which game it
+holds. Two installs of the same game can sit side by side, and each game
+remembers which one it uses (the chosen directory).
 
 **Install kind.** Who laid the install out. GOG, Steam, found, and manual.
 Found means Squire recognized the shape but no launch script named a publisher.
-Manual means the user named the pieces themselves rather than letting Squire
-find them.
+Manual means the user typed the directory themselves rather than letting
+Squire find it.
+
+**Chosen directory.** The install a game uses, remembered per game the first
+time the wizard's directory question is answered. The question is then
+skipped; `--game-dir` or a config edit changes it.
 
 **Game folder.** The game's own DOS folder, named `POOLRAD` for Pool of
 Radiance. Discovery identifies which game an install holds by this name, and
@@ -37,8 +41,8 @@ numbered 1 through 6. A save slot holds up to six.
 
 **Settings conf.** The per-game emulator configuration file Squire creates
 once, in its own config folder, and never touches again. It belongs to the
-user. A publisher's own configuration files are never launched; for a manual
-install, the user's named conf takes the settings conf's place.
+user. Nobody else's configuration files are ever launched: not a publisher's,
+not a hand-written one. Every install launches with this file.
 
 **Computed autoexec.** The DOS commands that start the game: mount, enter the
 game folder, run the game's start command, exit. Squire computes them each

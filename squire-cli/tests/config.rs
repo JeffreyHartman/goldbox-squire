@@ -1,184 +1,147 @@
-//! The config file: a map of installs plus the last choice.
+//! The config file: game directories, and which one each game uses.
+
+use std::path::{Path, PathBuf};
 
 use squire_cli::config::{Config, Install, InstallKind};
+use squire_core::discover::{DiscoveredInstall, Publisher};
+
+// --- migration ----------------------------------------------------------------
 
 #[test]
-fn a_v2_config_parses_with_ordered_confs_and_the_last_choice() {
-    let text = r#"
-        last_install = "steam:pool-of-radiance"
-
-        [installs."steam:pool-of-radiance"]
-        game = "pool-of-radiance"
-        kind = "steam"
-        root = "/games/steam/Pool of Radiance"
-        saves = "GAME/POOLRAD"
-        confs = ["base.conf", "graphics.conf", "game.conf"]
-        emulator = "dosbox"
-    "#;
-
-    let config = Config::from_toml(text).unwrap();
-
-    assert_eq!(config.last_install.as_deref(), Some("steam:pool-of-radiance"));
-    let install = &config.installs["steam:pool-of-radiance"];
-    assert_eq!(install.game, "pool-of-radiance");
-    assert_eq!(install.kind, InstallKind::Steam);
-    assert_eq!(
-        install.confs,
-        vec!["base.conf", "graphics.conf", "game.conf"],
-        "conf order is part of the install"
+fn a_v3_config_round_trips() {
+    let mut config = Config {
+        last_game: Some("pool-of-radiance".into()),
+        dosbox: Some("dosbox-staging".into()),
+        ..Default::default()
+    };
+    config.installs.insert(
+        "gog:pool-of-radiance".into(),
+        Install {
+            game: "pool-of-radiance".into(),
+            kind: InstallKind::Gog,
+            root: "/games/por".into(),
+            saves: "data/POOLRAD".into(),
+        },
     );
-    assert_eq!(install.emulator.as_deref(), Some("dosbox"));
+    config
+        .chosen
+        .insert("pool-of-radiance".into(), "gog:pool-of-radiance".into());
+
+    let text = config.to_toml().unwrap();
+    let back = Config::from_toml(&text).unwrap();
+
+    assert_eq!(back, config);
 }
 
 #[test]
-fn an_old_flat_config_migrates_to_one_manual_install() {
-    // What the current released version writes.
-    let text = r#"
-        game_dir = "/home/jeff/goldbox/POOLRAD"
-        dosbox = "dosbox-staging"
-        conf = "/home/jeff/goldbox/por.conf"
-    "#;
-
-    let config = Config::from_toml(text).unwrap();
-
-    assert_eq!(config.installs.len(), 1);
-    let (key, install) = config.installs.iter().next().unwrap();
-    assert_eq!(install.kind, InstallKind::Manual);
-    assert_eq!(install.root, "/home/jeff/goldbox/POOLRAD");
-    assert_eq!(install.saves, "", "the old game_dir was the save folder");
-    assert_eq!(install.confs, vec!["/home/jeff/goldbox/por.conf"]);
-    assert_eq!(install.emulator.as_deref(), Some("dosbox-staging"));
-    assert_eq!(
-        config.last_install.as_deref(),
-        Some(key.as_str()),
-        "the migrated install is the default"
-    );
-}
-
-#[test]
-fn a_migrated_config_round_trips() {
-    let old = r#"
-        game_dir = "/saves/POOLRAD"
-        conf = "/saves/por.conf"
-    "#;
-
-    let migrated = Config::from_toml(old).unwrap();
-    let again = Config::from_toml(&migrated.to_toml().unwrap()).unwrap();
-
-    assert_eq!(migrated, again);
-}
-
-#[test]
-fn a_v2_config_round_trips() {
+fn a_v2_config_migrates_the_last_choice_to_a_chosen_directory() {
+    // v2 carried confs, emulators and a single last_install. The directories
+    // survive; the launch details are gbs's own now (ADR 0004).
     let text = r#"
         last_install = "gog:pool-of-radiance"
-        extra_roots = ["/mnt/games"]
 
-        [installs."gog:pool-of-radiance"]
-        game = "pool-of-radiance"
-        kind = "gog"
-        root = "/home/jeff/GOG Games/por"
-        saves = "data/POOLRAD"
-        confs = ["dosbox_por.conf", "dosbox_por_single.conf"]
-    "#;
-
-    let config = Config::from_toml(text).unwrap();
-    let again = Config::from_toml(&config.to_toml().unwrap()).unwrap();
-
-    assert_eq!(config, again);
-    assert_eq!(config.extra_roots, vec!["/mnt/games"]);
-}
-
-#[test]
-fn the_save_folder_is_root_joined_with_saves() {
-    let text = r#"
         [installs."gog:pool-of-radiance"]
         game = "pool-of-radiance"
         kind = "gog"
         root = "/games/por"
         saves = "data/POOLRAD"
-        confs = ["a.conf"]
+        confs = ["dosbox_por.conf", "dosbox_por_single.conf"]
+        emulator = "/games/por/dosbox/dosbox"
+        introduced = true
+
+        [installs."manual:pool-of-radiance"]
+        game = "pool-of-radiance"
+        kind = "manual"
+        root = "/hand/POOLRAD"
+        saves = ""
+        confs = ["/hand/por.conf"]
     "#;
 
     let config = Config::from_toml(text).unwrap();
-    let install = &config.installs["gog:pool-of-radiance"];
+
+    assert_eq!(config.last_game.as_deref(), Some("pool-of-radiance"));
+    assert_eq!(
+        config.chosen.get("pool-of-radiance").map(String::as_str),
+        Some("gog:pool-of-radiance")
+    );
+    assert_eq!(config.installs.len(), 2);
+    assert_eq!(config.installs["manual:pool-of-radiance"].root, "/hand/POOLRAD");
+}
+
+#[test]
+fn a_v1_config_migrates_to_one_chosen_manual_install() {
+    let text = r#"
+        game_dir = "/home/x/goldbox/POOLRAD"
+        dosbox = "dosbox-staging"
+        conf = "/home/x/goldbox/por.conf"
+    "#;
+
+    let config = Config::from_toml(text).unwrap();
+
+    let install = &config.installs["manual:pool-of-radiance"];
+    assert_eq!(install.kind, InstallKind::Manual);
+    assert_eq!(install.root, "/home/x/goldbox/POOLRAD");
+    assert_eq!(
+        config.chosen.get("pool-of-radiance").map(String::as_str),
+        Some("manual:pool-of-radiance")
+    );
+    assert_eq!(config.last_game.as_deref(), Some("pool-of-radiance"));
+    // The v1 emulator choice becomes the permanent override; the conf has no
+    // successor and is dropped.
+    assert_eq!(config.dosbox.as_deref(), Some("dosbox-staging"));
+}
+
+#[test]
+fn no_config_field_stores_a_save_slot() {
+    // ADR 0002: a slot describes one sitting and is asked every run.
+    let mut config = Config {
+        last_game: Some("pool-of-radiance".into()),
+        ..Default::default()
+    };
+    config
+        .chosen
+        .insert("pool-of-radiance".into(), "gog:pool-of-radiance".into());
+
+    let text = config.to_toml().unwrap().to_ascii_lowercase();
+
+    assert!(!text.contains("slot"), "got: {text}");
+}
+
+#[test]
+fn garbage_gives_an_error_not_a_panic() {
+    assert!(Config::from_toml("[[[not toml").is_err());
+}
+
+// --- the save folder ----------------------------------------------------------
+
+#[test]
+fn the_save_folder_is_root_joined_with_saves() {
+    let install = Install {
+        game: "pool-of-radiance".into(),
+        kind: InstallKind::Steam,
+        root: "/steam/POOLRAD".into(),
+        saves: "GAME/POOLRAD/SAVE".into(),
+    };
 
     assert_eq!(
-        install.save_dir().to_string_lossy(),
-        "/games/por/data/POOLRAD"
+        install.save_dir(),
+        PathBuf::from("/steam/POOLRAD/GAME/POOLRAD/SAVE")
     );
 }
 
 #[test]
 fn an_empty_saves_means_the_root_itself() {
-    // A manual install's game_dir is the save folder.
-    let text = r#"
-        [installs."manual:pool-of-radiance"]
-        game = "pool-of-radiance"
-        kind = "manual"
-        root = "/saves/POOLRAD"
-        saves = ""
-        confs = []
-    "#;
+    let install = Install {
+        game: "pool-of-radiance".into(),
+        kind: InstallKind::Manual,
+        root: "/hand/POOLRAD".into(),
+        saves: String::new(),
+    };
 
-    let config = Config::from_toml(text).unwrap();
-    let install = &config.installs["manual:pool-of-radiance"];
-
-    assert_eq!(install.save_dir().to_string_lossy(), "/saves/POOLRAD");
+    assert_eq!(install.save_dir(), PathBuf::from("/hand/POOLRAD"));
 }
 
-#[test]
-fn no_config_field_stores_a_save_slot() {
-    // A slot describes one sitting. Remembering it would pin the user to a
-    // save they stopped playing, which is the bug this rework removes.
-    let text = r#"
-        last_install = "gog:pool-of-radiance"
-
-        [installs."gog:pool-of-radiance"]
-        game = "pool-of-radiance"
-        kind = "gog"
-        root = "/games/por"
-        saves = "data/POOLRAD"
-        confs = ["a.conf"]
-    "#;
-
-    let written = Config::from_toml(text).unwrap().to_toml().unwrap();
-
-    assert!(
-        !written.to_lowercase().contains("slot"),
-        "the config must never mention a slot: {written}"
-    );
-}
-
-#[test]
-fn garbage_gives_an_error_not_a_panic() {
-    assert!(Config::from_toml("this is not toml [[[").is_err());
-}
-
-// --- discovered installs are cached in the config ---------------------------
-
-use squire_core::discover::{DiscoveredInstall, Publisher};
-use std::path::PathBuf;
-
-fn tempdir(tag: &str) -> PathBuf {
-    let base = std::env::temp_dir().join(format!(
-        "gbs-config-{tag}-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    let _ = std::fs::remove_dir_all(&base);
-    std::fs::create_dir_all(&base).unwrap();
-    base
-}
-
-fn discovered(root: &std::path::Path, publisher: Option<Publisher>) -> DiscoveredInstall {
-    DiscoveredInstall {
-        game_id: "pool-of-radiance".into(),
-        publisher,
-        root: root.to_path_buf(),
-        saves: PathBuf::from("data/POOLRAD"),
-    }
-}
+// --- absorbing discovery results ----------------------------------------------
 
 #[test]
 fn a_discovered_install_is_written_into_the_config() {
@@ -192,93 +155,6 @@ fn a_discovered_install_is_written_into_the_config() {
     assert_eq!(install.kind, InstallKind::Gog);
     assert_eq!(install.root, root.to_string_lossy());
     assert_eq!(install.saves, "data/POOLRAD");
-    assert!(install.confs.is_empty(), "discovered installs carry no confs");
-    assert_eq!(install.emulator, None);
-}
-
-#[test]
-fn absorbing_the_same_results_again_changes_nothing() {
-    let root = tempdir("absorb-twice");
-    let mut config = Config::default();
-    config.absorb(vec![discovered(&root, Some(Publisher::Steam))]);
-
-    let changed = config.absorb(vec![discovered(&root, Some(Publisher::Steam))]);
-
-    assert!(!changed, "a normal run must not rewrite the file");
-}
-
-#[test]
-fn a_vanished_root_asks_for_rediscovery() {
-    let root = tempdir("vanish");
-    let mut config = Config::default();
-    config.absorb(vec![discovered(&root, Some(Publisher::Gog))]);
-
-    assert!(!config.needs_rediscovery());
-    std::fs::remove_dir_all(&root).unwrap();
-    assert!(config.needs_rediscovery());
-}
-
-#[test]
-fn a_vanished_manual_root_never_triggers_rediscovery() {
-    // Manual means the user named the pieces; a scan cannot find them again,
-    // so a vanished manual root is the user's to fix, not a reason to rescan.
-    // A discovered install with a healthy root sits alongside, because a
-    // config knowing no discovered installs rescans for that reason alone.
-    let healthy = tempdir("manual-no-rescan");
-    let text = format!(
-        r#"
-        [installs."manual:pool-of-radiance"]
-        game = "pool-of-radiance"
-        kind = "manual"
-        root = "/gone/away"
-        saves = ""
-        confs = ["por.conf"]
-
-        [installs."gog:pool-of-radiance"]
-        game = "pool-of-radiance"
-        kind = "gog"
-        root = "{}"
-        saves = ""
-    "#,
-        healthy.display()
-    );
-    let config = Config::from_toml(&text).unwrap();
-
-    assert!(!config.needs_rediscovery());
-}
-
-#[test]
-fn rediscovery_drops_a_cached_install_whose_root_vanished() {
-    let stays = tempdir("stays");
-    let goes = tempdir("goes");
-    let mut config = Config::default();
-    config.absorb(vec![discovered(&stays, Some(Publisher::Gog))]);
-    let mut second = discovered(&goes, Some(Publisher::Steam));
-    second.game_id = "pool-of-radiance".into();
-    config.absorb(vec![second]);
-    std::fs::remove_dir_all(&goes).unwrap();
-
-    config.absorb(vec![discovered(&stays, Some(Publisher::Gog))]);
-
-    assert!(config.installs.contains_key("gog:pool-of-radiance"));
-    assert!(
-        !config.installs.contains_key("steam:pool-of-radiance"),
-        "a cached result whose root vanished is stale, not remembered"
-    );
-}
-
-#[test]
-fn two_installs_of_the_same_kind_and_game_get_distinct_keys() {
-    let one = tempdir("dup-one");
-    let two = tempdir("dup-two");
-    let mut config = Config::default();
-
-    config.absorb(vec![
-        discovered(&one, Some(Publisher::Gog)),
-        discovered(&two, Some(Publisher::Gog)),
-    ]);
-
-    assert_eq!(config.installs.len(), 2, "{:?}", config.installs.keys());
 }
 
 #[test]
@@ -301,17 +177,100 @@ fn absorb_replaces_discovered_installs_wholesale() {
 }
 
 #[test]
+fn a_manual_directory_a_discovered_install_also_names_is_dropped() {
+    // The user pointed at the same folder discovery later found: that is one
+    // install, and the discovered reading of it wins.
+    let root = tempdir("manual-dup");
+    std::fs::create_dir_all(root.join("data/POOLRAD")).unwrap();
+    let mut config = Config::default();
+    let dir = root.join("data/POOLRAD");
+    config.choose_manual_dir("pool-of-radiance", &dir.to_string_lossy(), "");
+
+    config.absorb(vec![discovered(&root, Some(Publisher::Gog))]);
+
+    let manual_left = config
+        .installs
+        .values()
+        .any(|i| i.kind == InstallKind::Manual);
+    assert!(!manual_left, "{:?}", config.installs.keys().collect::<Vec<_>>());
+}
+
+#[test]
+fn a_manual_directory_elsewhere_survives_absorb() {
+    let root = tempdir("manual-stays");
+    let elsewhere = tempdir("manual-stays-elsewhere");
+    let mut config = Config::default();
+    config.choose_manual_dir("pool-of-radiance", &elsewhere.to_string_lossy(), "");
+
+    config.absorb(vec![discovered(&root, Some(Publisher::Gog))]);
+
+    assert!(config
+        .installs
+        .values()
+        .any(|i| i.kind == InstallKind::Manual));
+}
+
+#[test]
+fn a_dangling_chosen_entry_is_cleared() {
+    // The chosen key can vanish in a rescan; the wizard must then ask again
+    // rather than index a missing install.
+    let root = tempdir("dangling");
+    let mut config = Config::default();
+    config
+        .chosen
+        .insert("pool-of-radiance".into(), "steam:pool-of-radiance".into());
+
+    config.absorb(vec![discovered(&root, Some(Publisher::Gog))]);
+
+    assert!(config.chosen.is_empty());
+}
+
+// --- when a rescan is needed ---------------------------------------------------
+
+#[test]
 fn a_config_with_no_discovered_installs_triggers_rediscovery() {
     // A v1 config migrates to one manual install, which used to sail past
     // both scan triggers: the user never saw their GOG and Steam installs.
     let mut config = Config::default();
-    let args = squire_cli::args::Args::parse(
-        ["--conf", "/hand/por.conf", "--game-dir", "/hand/POOLRAD"]
-            .iter()
-            .map(|s| s.to_string()),
-    )
-    .unwrap();
-    config.remember_manual(&args);
+    config.choose_manual_dir("pool-of-radiance", "/hand/POOLRAD", "");
+
+    assert!(config.needs_rediscovery());
+}
+
+#[test]
+fn a_vanished_discovered_root_triggers_rediscovery() {
+    let alive = tempdir("alive");
+    let mut config = Config::default();
+    config.absorb(vec![discovered(&alive, Some(Publisher::Gog))]);
+    assert!(!config.needs_rediscovery());
+
+    std::fs::remove_dir_all(&alive).unwrap();
+
+    assert!(config.needs_rediscovery());
+}
+
+#[test]
+fn a_vanished_manual_root_never_triggers_rediscovery() {
+    // Manual means the user named the pieces; a scan cannot find them again,
+    // so a vanished manual root is the user's to fix, not a reason to rescan.
+    let healthy = tempdir("manual-no-rescan");
+    let mut config = Config::default();
+    config.absorb(vec![discovered(&healthy, Some(Publisher::Gog))]);
+    config.choose_manual_dir("pool-of-radiance", "/gone/away", "");
+
+    assert!(!config.needs_rediscovery());
+}
+
+#[test]
+fn a_manual_duplicate_of_a_discovered_folder_triggers_rediscovery() {
+    // A migrated config can arrive with a manual entry naming the folder a
+    // discovered install also names. Only absorb dedups, so it must rescan.
+    let root = tempdir("manual-dup-rescan");
+    std::fs::create_dir_all(root.join("data/POOLRAD")).unwrap();
+    let mut config = Config::default();
+    config.absorb(vec![discovered(&root, Some(Publisher::Gog))]);
+    let dir = root.join("data/POOLRAD");
+    config.choose_manual_dir("pool-of-radiance", &dir.to_string_lossy(), "");
 
     assert!(config.needs_rediscovery());
 }
@@ -320,7 +279,6 @@ fn a_config_with_no_discovered_installs_triggers_rediscovery() {
 fn two_installs_reaching_one_game_folder_trigger_rediscovery() {
     // An existing config can carry the found:/gog: duplicate from before
     // ticket 026. Only a rescan can collapse it, so it must trigger one.
-    // Two roots, one game folder: a hand setup above a GOG install.
     let base = tempdir("dup-rediscover");
     let inner = base.join("pool-of-radiance");
     std::fs::create_dir_all(inner.join("data/POOLRAD")).unwrap();
@@ -335,71 +293,24 @@ fn two_installs_reaching_one_game_folder_trigger_rediscovery() {
     assert!(config.needs_rediscovery());
 }
 
-// --- which emulator a launch uses --------------------------------------------
-//
-// Field-tested on a real GOG install: the bundled DOSBox 0.74 needs libraries
-// a current distro no longer ships, and GOG's wrapper script exits 0 even when
-// the binary fails to load. The system emulator is the one the user keeps
-// working, so it wins for discovered installs; a manual install's stored
-// choice wins for that install (ADR 0003, ticket 024).
+// --- helpers -------------------------------------------------------------------
 
-fn install(kind: InstallKind, emulator: Option<&str>) -> Install {
-    Install {
-        game: "pool-of-radiance".into(),
-        kind,
-        root: "/tmp/somewhere".into(),
-        saves: "data/POOLRAD".into(),
-        confs: vec!["a.conf".into()],
-        emulator: emulator.map(String::from),
-        introduced: true,
+fn discovered(root: &Path, publisher: Option<Publisher>) -> DiscoveredInstall {
+    DiscoveredInstall {
+        game_id: "pool-of-radiance".into(),
+        publisher,
+        root: root.to_path_buf(),
+        saves: PathBuf::from("data/POOLRAD"),
     }
 }
 
-#[test]
-fn a_discovered_install_prefers_the_system_emulator() {
-    let install = install(InstallKind::Gog, Some("/game/dosbox/dosbox"));
-
-    assert_eq!(
-        install.emulator_command(Some("dosbox-staging")).unwrap(),
-        "dosbox-staging"
-    );
-}
-
-#[test]
-fn a_discovered_install_never_launches_a_stored_bundled_emulator() {
-    // ADR 0003: bundled emulators are no longer launched, full stop. An old
-    // config can still carry one; with no system emulator that is an error,
-    // not a launch of the known-broken bundle.
-    let install = install(InstallKind::Gog, Some("/game/dosbox/dosbox"));
-
-    let err = install.emulator_command(None).unwrap_err();
-
-    assert!(err.contains("--dosbox"), "got: {err}");
-}
-
-#[test]
-fn a_manual_install_uses_its_chosen_emulator_over_the_system_one() {
-    // The user named this emulator with --dosbox; that choice is not second-
-    // guessed.
-    let install = install(InstallKind::Manual, Some("my-dosbox"));
-
-    assert_eq!(install.emulator_command(Some("dosbox")).unwrap(), "my-dosbox");
-}
-
-#[test]
-fn a_manual_install_without_a_stored_choice_takes_the_system_one() {
-    let install = install(InstallKind::Manual, None);
-
-    assert_eq!(install.emulator_command(Some("dosbox")).unwrap(), "dosbox");
-}
-
-#[test]
-fn no_emulator_anywhere_is_an_error_naming_the_names_and_the_flag() {
-    let install = install(InstallKind::Steam, None);
-
-    let err = install.emulator_command(None).unwrap_err();
-
-    for expected in ["dosbox", "dosbox-staging", "dosbox-x", "--dosbox"] {
-        assert!(err.contains(expected), "missing {expected} in: {err}");
-    }
+fn tempdir(tag: &str) -> PathBuf {
+    let base = std::env::temp_dir().join(format!(
+        "gbs-config-{tag}-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+    base
 }

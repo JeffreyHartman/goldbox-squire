@@ -124,12 +124,12 @@ fn config_with_install(dir: &Path) -> Config {
             kind: InstallKind::Gog,
             root: dir.to_string_lossy().into_owned(),
             saves: String::new(),
-            confs: vec!["a.conf".into()],
-            emulator: None,
-            introduced: true,
         },
     );
-    config.last_install = Some("gog:pool-of-radiance".into());
+    config
+        .chosen
+        .insert("pool-of-radiance".into(), "gog:pool-of-radiance".into());
+    config.last_game = Some("pool-of-radiance".into());
     config
 }
 

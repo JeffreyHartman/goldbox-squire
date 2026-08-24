@@ -15,9 +15,11 @@ pub struct Args {
     pub game: Option<String>,
     /// Answers the second: which save slot, a letter A through J.
     pub slot: Option<char>,
+    /// Points the game at this game folder, and remembers it (ADR 0004).
     pub game_dir: Option<String>,
+    /// The emulator for this one run. The config's `dosbox` field is the
+    /// permanent version.
     pub dosbox: Option<String>,
-    pub conf: Option<String>,
     /// Read an emulator this tool did not start. Needs a relaxed
     /// `kernel.yama.ptrace_scope`, so it is not the normal path.
     pub pid: Option<i32>,
@@ -45,14 +47,21 @@ gbs — Goldbox Squire. Shows the live party of an SSI Gold Box game.
 USAGE:
     gbs [OPTIONS]
 
-A bare `gbs` picks the install and the save slot, starts the game, waits for
+A bare `gbs` asks which game, where it is (the first time only; the answer is
+remembered per game), and which save slot. Then it starts the game, waits for
 the party, and redraws it until the emulator exits or you stop it. Each option
-below answers one of those questions in advance.
+below answers one of those questions in advance. In the menus, 0 goes back.
 
 OPTIONS:
     --game <ID>        Which game to run, by its id (pool-of-radiance).
+    --game-dir <DIR>   Use this game folder for the game, and remember it.
+                       The wizard's directory question also takes a typed
+                       path, so this flag is never required.
     --slot <A-J>       Which save slot to read. Asked every run otherwise,
                        because a slot describes one sitting.
+    --dosbox <CMD>     The emulator for this run. Default: the first of
+                       dosbox, dosbox-staging, dosbox-x found on PATH. A
+                       `dosbox` line in the config file makes it permanent.
     --interval <MS>    Milliseconds between redraws. Default: 500
     --json             Print JSON rather than a table.
     --pid <PID>        Read an emulator this tool did not start. This works
@@ -61,12 +70,8 @@ OPTIONS:
                        the supported path and needs no system change.
     -h, --help         Print this text.
 
-MANUAL SETUP, when discovery does not find your install:
-    --game-dir <DIR>   The folder holding the game's CHRDAT*.SAV files.
-    --conf <FILE>      The DOSBox configuration file that starts the game.
-    --dosbox <CMD>     The emulator to start. Default: the first of dosbox,
-                       dosbox-staging, dosbox-x found on PATH.
-    The three are remembered as a manual install, so they are given once.
+Emulator settings live in a per-game file gbs creates in its config folder
+and never touches again; the first launch names it.
 
 Goldbox Squire starts the emulator itself. That is what makes reading its
 memory permitted without changing any system setting.
@@ -94,7 +99,6 @@ impl Args {
                 }
                 "--game-dir" => args.game_dir = Some(value("--game-dir")?),
                 "--dosbox" => args.dosbox = Some(value("--dosbox")?),
-                "--conf" => args.conf = Some(value("--conf")?),
                 "--pid" => {
                     let raw = value("--pid")?;
                     args.pid = Some(

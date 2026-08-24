@@ -30,8 +30,8 @@ pub fn resolve(args: &Args, config: &Config) -> Result<Resolved, String> {
     let game_id = match &args.game {
         Some(game) => game.clone(),
         None => config
-            .last()
-            .map(|(_, install)| install.game.clone())
+            .last_game
+            .clone()
             .ok_or("--pid cannot guess the game. Pass --game <ID>.")?,
     };
     if games::find(&game_id).is_none() {
@@ -82,13 +82,11 @@ pub fn resolve(args: &Args, config: &Config) -> Result<Resolved, String> {
     })
 }
 
-/// The save folder of a remembered install of this game, preferring the last
-/// choice.
+/// The save folder of a remembered install of this game, preferring the
+/// game's chosen directory.
 fn install_of(config: &Config, game_id: &str) -> Option<PathBuf> {
-    if let Some((_, install)) = config.last() {
-        if install.game == game_id {
-            return Some(install.save_dir());
-        }
+    if let Some((_, install)) = config.chosen_for(game_id) {
+        return Some(install.save_dir());
     }
     config
         .installs

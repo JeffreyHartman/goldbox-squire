@@ -213,3 +213,33 @@ fn two_roots_reaching_the_same_install_yield_one_install() {
 
     assert_eq!(found.len(), 1, "{:?}", found);
 }
+
+#[test]
+fn saves_within_finds_chrdat_files_in_the_folder_itself() {
+    let base = tempdir();
+    let dir = base.join("POOLRAD");
+    mkdir(&dir);
+    write_save(&dir, "CHRDATA1.SAV", "HERO");
+
+    assert_eq!(discover::saves_within(&dir), Some(PathBuf::new()));
+}
+
+#[test]
+fn saves_within_finds_chrdat_files_one_child_down() {
+    // Steam keeps them in a SAVE child inside the game folder.
+    let base = tempdir();
+    let dir = base.join("POOLRAD");
+    mkdir(&dir.join("SAVE"));
+    write_save(&dir.join("SAVE"), "CHRDATA1.SAV", "HERO");
+
+    assert_eq!(discover::saves_within(&dir), Some(PathBuf::from("SAVE")));
+}
+
+#[test]
+fn saves_within_is_none_when_there_are_no_saves() {
+    let base = tempdir();
+    let dir = base.join("POOLRAD");
+    mkdir(&dir);
+
+    assert_eq!(discover::saves_within(&dir), None);
+}

@@ -235,6 +235,29 @@ fn find_saves(root: &Path, game_folder: &str) -> Option<PathBuf> {
     None
 }
 
+/// Where a game directory keeps its saves: the directory itself, or one
+/// direct child (Steam nests a `SAVE` folder). Relative to `dir`; empty
+/// means the directory itself. `None` means no save files at all.
+///
+/// This serves the typed-path flow (ADR 0004): the user points at the game
+/// folder, and this finds the saves the way discovery would.
+pub fn saves_within(dir: &Path) -> Option<PathBuf> {
+    if has_chrdat_files(dir) {
+        return Some(PathBuf::new());
+    }
+    let mut children: Vec<PathBuf> = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect();
+    children.sort();
+    children
+        .into_iter()
+        .find(|child| has_chrdat_files(child))
+        .and_then(|child| child.file_name().map(PathBuf::from))
+}
+
 fn has_chrdat_files(dir: &Path) -> bool {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return false;

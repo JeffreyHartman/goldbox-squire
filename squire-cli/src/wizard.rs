@@ -1,56 +1,65 @@
-//! The wizard: asks which install and which save slot, then gets out of the
-//! way.
+//! The wizard: game, directory, slot (ADR 0004).
 //!
-//! Two rules keep it unobtrusive. An argument answers its question in advance
-//! and the question is skipped. Every question with a remembered or
-//! discoverable default accepts Enter, so a returning user is two Enters from
-//! a running game.
+//! Three rules keep it unobtrusive. An argument answers its question in
+//! advance and the question is skipped. The game is asked every run (Enter
+//! repeats the last one); the directory is asked only until a game has one;
+//! the slot is asked every run and never remembered (ADR 0002). Back is `0`
+//! everywhere: `b` would collide with save slot B.
 //!
 //! No raw terminal mode: input is plain lines ended by Enter, which is what
 //! makes the wizard testable without a terminal.
 
 use std::io::{BufRead, Write};
+use std::path::Path;
 
-use squire_core::{games, saves};
+use squire_core::{discover, games, saves};
 
 use crate::config::Config;
 
 /// What one question came back with.
 enum Answer<T> {
     Picked(T),
-    /// An empty line with no default, or a lone `b`.
+    /// A lone `0`, or an empty line with no default.
     Back,
 }
 
 /// Asks whatever the arguments left unanswered and returns the install key
-/// and the save slot.
-///
-/// The save slot is asked every run and never remembered: a slot describes
-/// one sitting.
+/// and the save slot. Records the picks (`last_game`, `chosen`, a typed
+/// directory) in the config; the caller saves it.
 pub fn choose<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
-    config: &Config,
+    config: &mut Config,
     game_arg: Option<&str>,
+    game_dir_arg: Option<&str>,
     slot_arg: Option<char>,
 ) -> Result<(String, char), String> {
-    if config.installs.is_empty() {
-        return Err("no installs are known. Point gbs at one with --conf and --game-dir.".into());
-    }
-
     loop {
-        let key = match game_arg {
-            Some(game) => resolve_game(config, game)?,
-            None => match ask_install(input, output, config)? {
-                Answer::Picked(key) => key,
+        let game_id = match game_arg {
+            Some(id) => validate_game(id)?,
+            None => match ask_game(input, output, config)? {
+                Answer::Picked(id) => id,
                 // There is no question before this one; ask it again.
                 Answer::Back => continue,
             },
         };
+        config.last_game = Some(game_id.clone());
+        let game = games::find(&game_id).expect("the game id was validated");
+
+        let key = match game_dir_arg {
+            // --game-dir re-points the game permanently, chosen or not.
+            Some(dir) => point_at(config, &game, dir)?,
+            None => match config.chosen_for(&game_id) {
+                Some((key, _)) => key.clone(),
+                None => match ask_dir(input, output, config, &game)? {
+                    Answer::Picked(key) => key,
+                    Answer::Back => continue,
+                },
+            },
+        };
 
         let install = &config.installs[&key];
-        let slots =
-            saves::populated_slots(install.save_dir()).map_err(|e| e.to_string())?;
+        let slots = saves::populated_slots(install.save_dir()).map_err(|e| e.to_string())?;
 
         let slot = match slot_arg {
             Some(letter) => {
@@ -82,7 +91,7 @@ pub fn choose<R: BufRead, W: Write>(
 pub fn repick_slot<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
-    game_dir: &std::path::Path,
+    game_dir: &Path,
 ) -> Result<Option<(char, Vec<String>)>, String> {
     let slots = saves::populated_slots(game_dir).map_err(|e| e.to_string())?;
     match ask_slot(input, output, &slots)? {
@@ -98,49 +107,52 @@ pub fn repick_slot<R: BufRead, W: Write>(
     }
 }
 
-/// Turns `--game` into an install key without asking anything.
-fn resolve_game(config: &Config, game: &str) -> Result<String, String> {
-    if games::find(game).is_none() {
+/// Checks a `--game` id against the registry.
+fn validate_game(id: &str) -> Result<String, String> {
+    if games::find(id).is_none() {
         let known: Vec<String> = games::games().into_iter().map(|g| g.id).collect();
         return Err(format!(
-            "unknown game `{game}`. Compiled-in games: {}",
+            "unknown game `{id}`. Compiled-in games: {}",
             known.join(", ")
         ));
     }
-    // The remembered install wins when it holds this game.
-    if let Some((key, install)) = config.last() {
-        if install.game == game {
-            return Ok(key.clone());
-        }
-    }
-    config
-        .installs
-        .iter()
-        .find(|(_, install)| install.game == game)
-        .map(|(key, _)| key.clone())
-        .ok_or_else(|| format!("no install of `{game}` is known. Run `gbs` to set one up."))
+    Ok(id.to_string())
 }
 
-/// Question 1: which game? One numbered entry per install.
-fn ask_install<R: BufRead, W: Write>(
+/// Records a user-named game directory after checking it holds the game.
+fn point_at(config: &mut Config, game: &games::Game, dir: &str) -> Result<String, String> {
+    let path = Path::new(dir);
+    if !path.is_dir() {
+        return Err(format!("{dir} is not a folder"));
+    }
+    let Some(saves) = discover::saves_within(path) else {
+        return Err(format!(
+            "no CHRDAT*.SAV files in {dir} or one folder inside it. Point at \
+             the game's {} folder, and save the game once inside it first.",
+            game.game_folder
+        ));
+    };
+    Ok(config.choose_manual_dir(&game.id, dir, &saves.to_string_lossy()))
+}
+
+/// Question 1, every run: which game? Every compiled-in game is listed, even
+/// one with no directory yet.
+fn ask_game<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
     config: &Config,
 ) -> Result<Answer<String>, String> {
-    let entries: Vec<(&String, &crate::config::Install)> = config.installs.iter().collect();
+    let entries = games::games();
     let default = config
-        .last_install
+        .last_game
         .as_ref()
-        .and_then(|last| entries.iter().position(|(key, _)| *key == last))
+        .and_then(|last| entries.iter().position(|g| g.id == *last))
         .or((entries.len() == 1).then_some(0));
 
     let say = |e: &mut W| -> std::io::Result<()> {
         writeln!(e, "Which game?")?;
-        for (n, (_, install)) in entries.iter().enumerate() {
-            let name = games::find(&install.game)
-                .map(|g| g.name)
-                .unwrap_or_else(|| install.game.clone());
-            writeln!(e, "  {}. {name} — {} — {}", n + 1, install.kind, install.root)?;
+        for (n, game) in entries.iter().enumerate() {
+            writeln!(e, "  {}. {}", n + 1, game.name)?;
         }
         match default {
             Some(d) => write!(e, "Press Enter for {}, or type a number: ", d + 1),
@@ -151,31 +163,91 @@ fn ask_install<R: BufRead, W: Write>(
     say(output).map_err(|e| e.to_string())?;
 
     loop {
-        let line = read_line(input)?;
-        let line = line.trim();
-        if line.eq_ignore_ascii_case("b") {
-            return Ok(Answer::Back);
-        }
-        if line.is_empty() {
-            match default {
-                Some(d) => return Ok(Answer::Picked(entries[d].0.clone())),
-                None => return Ok(Answer::Back),
+        match read_choice(input, output, entries.len(), default)? {
+            Choice::Number(n) => return Ok(Answer::Picked(entries[n - 1].id.clone())),
+            Choice::Back => return Ok(Answer::Back),
+            Choice::Other => {
+                write!(output, "Pick a number between 1 and {}: ", entries.len())
+                    .and_then(|_| output.flush())
+                    .map_err(|e| e.to_string())?;
             }
         }
-        if let Ok(n) = line.parse::<usize>() {
-            if (1..=entries.len()).contains(&n) {
-                return Ok(Answer::Picked(entries[n - 1].0.clone()));
-            }
-        }
-        write!(output, "Pick a number between 1 and {}: ", entries.len())
-            .and_then(|_| output.flush())
-            .map_err(|e| e.to_string())?;
     }
 }
 
-/// Question 2: which save slot? One entry per populated slot, with the
-/// party's names. Picking by recognising your party beats remembering a
-/// letter (ADR 0002).
+/// Question 2, until a game has a directory: where is the game? The
+/// discovered directories, plus a typed path for one discovery missed.
+/// The pick is remembered, and this question is then skipped.
+fn ask_dir<R: BufRead, W: Write>(
+    input: &mut R,
+    output: &mut W,
+    config: &mut Config,
+    game: &games::Game,
+) -> Result<Answer<String>, String> {
+    let dirs: Vec<(String, String)> = config
+        .installs
+        .iter()
+        .filter(|(_, install)| install.game == game.id)
+        .map(|(key, install)| (key.clone(), format!("{} — {}", install.kind, install.root)))
+        .collect();
+    let elsewhere = dirs.len() + 1;
+    let default = (!dirs.is_empty()).then_some(0);
+
+    let say = |e: &mut W| -> std::io::Result<()> {
+        writeln!(e, "Where is {}? (gbs remembers this)", game.name)?;
+        for (n, (_, label)) in dirs.iter().enumerate() {
+            writeln!(e, "  {}. {label}", n + 1)?;
+        }
+        writeln!(e, "  {elsewhere}. Somewhere else (type a path)")?;
+        match default {
+            Some(d) => write!(e, "Press Enter for {}, type a number, or 0 to go back: ", d + 1),
+            None => write!(e, "Type a number, or 0 to go back: "),
+        }?;
+        e.flush()
+    };
+    say(output).map_err(|e| e.to_string())?;
+
+    loop {
+        match read_choice(input, output, elsewhere, default)? {
+            Choice::Number(n) if n < elsewhere => {
+                let key = dirs[n - 1].0.clone();
+                config.chosen.insert(game.id.clone(), key.clone());
+                return Ok(Answer::Picked(key));
+            }
+            Choice::Number(_) => {
+                // The typed path. A bad one is explained and asked again.
+                write!(output, "Path to the game's {} folder (0 goes back): ", game.game_folder)
+                    .and_then(|_| output.flush())
+                    .map_err(|e| e.to_string())?;
+                loop {
+                    let line = read_line(input)?;
+                    let line = line.trim();
+                    if line == "0" {
+                        return Ok(Answer::Back);
+                    }
+                    match point_at(config, game, line) {
+                        Ok(key) => return Ok(Answer::Picked(key)),
+                        Err(reason) => {
+                            write!(output, "{reason}\nTry another path (0 goes back): ")
+                                .and_then(|_| output.flush())
+                                .map_err(|e| e.to_string())?;
+                        }
+                    }
+                }
+            }
+            Choice::Back => return Ok(Answer::Back),
+            Choice::Other => {
+                write!(output, "Pick a number between 1 and {elsewhere}: ")
+                    .and_then(|_| output.flush())
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+}
+
+/// Question 3, every run: which save slot? One entry per populated slot,
+/// with the party's names. Picking by recognising your party beats
+/// remembering a letter (ADR 0002).
 fn ask_slot<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
@@ -190,7 +262,7 @@ fn ask_slot<R: BufRead, W: Write>(
         }
         write!(
             e,
-            "Press Enter for {default}, type a letter, or b to go back: "
+            "Press Enter for {default}, type a letter, or 0 to go back: "
         )?;
         e.flush()
     };
@@ -199,7 +271,7 @@ fn ask_slot<R: BufRead, W: Write>(
     loop {
         let line = read_line(input)?;
         let line = line.trim();
-        if line.eq_ignore_ascii_case("b") {
+        if line == "0" {
             return Ok(Answer::Back);
         }
         if line.is_empty() {
@@ -216,6 +288,37 @@ fn ask_slot<R: BufRead, W: Write>(
         write!(output, "Pick one of {}: ", populated.join(", "))
             .and_then(|_| output.flush())
             .map_err(|e| e.to_string())?;
+    }
+}
+
+/// One line read as a menu answer: a number in `1..=max`, back, or noise.
+/// An empty line takes the default when there is one, else goes back.
+enum Choice {
+    Number(usize),
+    Back,
+    Other,
+}
+
+fn read_choice<R: BufRead>(
+    input: &mut R,
+    _output: &mut impl Write,
+    max: usize,
+    default: Option<usize>,
+) -> Result<Choice, String> {
+    let line = read_line(input)?;
+    let line = line.trim();
+    if line == "0" {
+        return Ok(Choice::Back);
+    }
+    if line.is_empty() {
+        return Ok(match default {
+            Some(d) => Choice::Number(d + 1),
+            None => Choice::Back,
+        });
+    }
+    match line.parse::<usize>() {
+        Ok(n) if (1..=max).contains(&n) => Ok(Choice::Number(n)),
+        _ => Ok(Choice::Other),
     }
 }
 

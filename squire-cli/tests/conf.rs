@@ -97,9 +97,6 @@ fn install(root: &str, saves: &str) -> Install {
         kind: InstallKind::Gog,
         root: root.into(),
         saves: saves.into(),
-        confs: Vec::new(),
-        emulator: None,
-        introduced: false,
     }
 }
 

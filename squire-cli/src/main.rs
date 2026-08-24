@@ -8,7 +8,7 @@ use squire_cli::args::{Args, USAGE};
 use squire_cli::attach;
 use squire_cli::wizard;
 use squire_cli::conf;
-use squire_cli::config::{Config, InstallKind};
+use squire_cli::config::Config;
 use squire_cli::manual;
 use squire_cli::output;
 use squire_core::launch::{Emulator, Launched};
@@ -65,17 +65,10 @@ fn run() -> Result<(), String> {
         );
     }
 
-    // The command line wins over the config file, and what it says is then
-    // remembered as a manual install, so a setting is given once rather than
-    // every run.
-    if config.remember_manual(&args) {
-        if let Err(e) = config.save() {
-            eprintln!("gbs: warning: could not save the settings: {e}");
-        }
-    }
-
     // Find the user's installs, once. A normal run reads the cached results;
     // the scan reruns only when there are none or a stored root vanished.
+    // Finding nothing is not fatal: the wizard's directory question takes a
+    // typed path.
     if config.installs.is_empty() || config.needs_rediscovery() {
         let mut roots = squire_core::discover::default_roots();
         roots.extend(config.extra_roots.iter().map(PathBuf::from));
@@ -84,27 +77,18 @@ fn run() -> Result<(), String> {
                 eprintln!("gbs: warning: could not save the settings: {e}");
             }
         }
-        if config.installs.is_empty() {
-            let searched: Vec<String> =
-                roots.iter().map(|r| r.display().to_string()).collect();
-            return Err(format!(
-                "no game install found. Searched:\n  {}\n\
-                 Point gbs at yours by hand once: \
-                 gbs --conf /path/to/your.conf --game-dir /path/to/POOLRAD",
-                searched.join("\n  ")
-            ));
-        }
     }
 
+    let before = config.clone();
     let (key, slot) = wizard::choose(
         &mut std::io::stdin().lock(),
         &mut std::io::stderr(),
-        &config,
+        &mut config,
         args.game.as_deref(),
+        args.game_dir.as_deref(),
         args.slot,
     )?;
-    if config.last_install.as_ref() != Some(&key) {
-        config.last_install = Some(key.clone());
+    if config != before {
         if let Err(e) = config.save() {
             eprintln!("gbs: warning: could not save the settings: {e}");
         }
@@ -120,47 +104,25 @@ fn run() -> Result<(), String> {
     // points; refuse that before launching. Discovery cannot mis-name one.
     manual::folder_name_check(&install, &game)?;
 
-    // The first use of a manual install names its conf files, once, so the
-    // user knows where the emulator settings live.
-    if install.kind == InstallKind::Manual {
-        if let Some(note) = manual::first_run_note(&install) {
-            eprintln!("gbs: {note}");
-            if let Some(stored) = config.installs.get_mut(&key) {
-                stored.introduced = true;
-                if let Err(e) = config.save() {
-                    eprintln!("gbs: warning: could not save the settings: {e}");
-                }
-            }
-        }
-    }
-
     // The normal path. Starting the emulator is what makes the read permitted.
-    let command = match args.dosbox.as_deref() {
-        Some(named) => named.to_string(),
-        None => install.emulator_command(squire_cli::emulator::find())?,
-    };
+    // Every install launches the same way (ADR 0004): the per-game settings
+    // conf the user edits, plus an autoexec computed from where the game is.
+    let command = squire_cli::emulator::command(
+        args.dosbox.as_deref(),
+        config.dosbox.as_deref(),
+        squire_cli::emulator::find(),
+    )?;
     let mut emulator = Emulator::new(&command);
-    if install.kind == InstallKind::Manual {
-        // The user's conf drives everything, exactly as given. Its relative
-        // mounts resolve against the conf's own folder.
-        for conf in &install.confs {
-            emulator = emulator.conf(conf);
-        }
-        emulator = emulator.current_dir(conf_dir(&install.confs, &install.root));
-    } else {
-        // ADR 0003: gbs owns the configuration. A per-game settings conf the
-        // user edits, plus an autoexec computed from where the game was found.
-        let (settings, created) = conf::ensure(&own_config_dir()?, &game)?;
-        if created {
-            eprintln!(
-                "gbs: created {}. Emulator settings live there and are yours to edit.",
-                settings.display()
-            );
-        }
-        emulator = emulator.conf(&settings);
-        for dos_command in conf::autoexec(&install, &game)? {
-            emulator = emulator.command(dos_command);
-        }
+    let (settings, created) = conf::ensure(&own_config_dir()?, &game)?;
+    if created {
+        eprintln!(
+            "gbs: created {}. Emulator settings live there and are yours to edit.",
+            settings.display()
+        );
+    }
+    emulator = emulator.conf(&settings);
+    for dos_command in conf::autoexec(&install, &game)? {
+        emulator = emulator.command(dos_command);
     }
     let log = log_path();
     emulator = emulator.log_to(&log);
@@ -181,17 +143,6 @@ fn run() -> Result<(), String> {
         names,
         Some(&save_dir),
     )
-}
-
-/// The folder the emulator starts in: the one holding the confs.
-fn conf_dir(confs: &[String], root: &str) -> PathBuf {
-    match confs.first().map(Path::new) {
-        Some(conf) if conf.is_absolute() => conf
-            .parent()
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| PathBuf::from(root)),
-        _ => PathBuf::from(root),
-    }
 }
 
 /// The folder gbs's own files live in: the config file's folder.

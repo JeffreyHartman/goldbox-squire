@@ -1,76 +1,10 @@
-//! The manual install path's guards: the folder-name check and the
-//! first-run note.
+//! The manual directory's guard: the folder-name check.
 
 use std::path::{Path, PathBuf};
 
-use squire_cli::args::Args;
-use squire_cli::config::{Config, Install, InstallKind};
+use squire_cli::config::{Install, InstallKind};
 use squire_cli::manual;
 use squire_core::games;
-
-// --- the pair feeds the wizard ----------------------------------------------
-
-#[test]
-fn dosbox_alone_is_a_run_time_override_not_an_install() {
-    // Found while smoke-testing ADR 0003 with a stub emulator: --dosbox with
-    // nothing else used to create a manual install with an empty root, which
-    // then hijacked the wizard and blocked discovery.
-    let args = Args::parse(["--dosbox", "my-dosbox"].iter().map(|s| s.to_string())).unwrap();
-    let mut config = Config::default();
-
-    let changed = config.remember_manual(&args);
-
-    assert!(!changed);
-    assert!(config.installs.is_empty());
-}
-
-#[test]
-fn conf_and_game_dir_become_a_remembered_manual_install() {
-    let args = Args::parse(
-        ["--conf", "/hand/por.conf", "--game-dir", "/hand/POOLRAD"]
-            .iter()
-            .map(|s| s.to_string()),
-    )
-    .unwrap();
-    let mut config = Config::default();
-
-    let changed = config.remember_manual(&args);
-
-    assert!(changed);
-    let install = &config.installs["manual:pool-of-radiance"];
-    assert_eq!(install.kind, InstallKind::Manual);
-    assert_eq!(install.root, "/hand/POOLRAD");
-    assert_eq!(install.confs, vec!["/hand/por.conf"]);
-    assert_eq!(
-        config.last_install.as_deref(),
-        Some("manual:pool-of-radiance"),
-        "the pair is the default next run, like any other install"
-    );
-}
-
-#[test]
-fn the_migrated_flat_config_matches_a_fresh_pair() {
-    // An existing user's v1 file and a fresh --conf/--game-dir must land in
-    // the same place, so both paths behave identically from here on.
-    let old = Config::from_toml(
-        r#"
-        game_dir = "/hand/POOLRAD"
-        conf = "/hand/por.conf"
-        "#,
-    )
-    .unwrap();
-
-    let args = Args::parse(
-        ["--conf", "/hand/por.conf", "--game-dir", "/hand/POOLRAD"]
-            .iter()
-            .map(|s| s.to_string()),
-    )
-    .unwrap();
-    let mut fresh = Config::default();
-    fresh.remember_manual(&args);
-
-    assert_eq!(old, fresh);
-}
 
 // --- the folder-name check ----------------------------------------------------
 
@@ -84,9 +18,6 @@ fn manual_install(root: &Path) -> Install {
         kind: InstallKind::Manual,
         root: root.to_string_lossy().into_owned(),
         saves: String::new(),
-        confs: vec!["/hand/por.conf".into()],
-        emulator: None,
-        introduced: false,
     }
 }
 
@@ -155,49 +86,6 @@ fn a_discovered_install_is_not_checked() {
 
     assert!(manual::folder_name_check(&install, &por()).is_ok());
 }
-
-// --- the first-run note --------------------------------------------------------
-
-#[test]
-fn the_first_run_note_names_the_conf_files_with_full_paths() {
-    let install = Install {
-        game: "pool-of-radiance".into(),
-        kind: InstallKind::Manual,
-        root: "/hand/POOLRAD".into(),
-        saves: String::new(),
-        confs: vec!["/hand/por.conf".into()],
-        emulator: None,
-        introduced: false,
-    };
-
-    let note = manual::first_run_note(&install).unwrap();
-
-    assert!(note.contains("/hand/por.conf"), "got: {note}");
-    assert!(
-        note.to_lowercase().contains("settings"),
-        "says the settings live there: {note}"
-    );
-}
-
-#[test]
-fn an_introduced_install_gets_no_note() {
-    let mut install = manual_install(Path::new("/hand/POOLRAD"));
-    install.introduced = true;
-
-    assert_eq!(manual::first_run_note(&install), None);
-}
-
-#[test]
-fn a_relative_conf_is_shown_under_its_root() {
-    let mut install = manual_install(Path::new("/games/por"));
-    install.confs = vec!["dosbox_por.conf".into()];
-
-    let note = manual::first_run_note(&install).unwrap();
-
-    assert!(note.contains("/games/por/dosbox_por.conf"), "got: {note}");
-}
-
-// --- helpers -----------------------------------------------------------------
 
 fn tempdir(tag: &str) -> PathBuf {
     let base = std::env::temp_dir().join(format!(
