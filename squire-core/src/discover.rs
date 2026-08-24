@@ -35,8 +35,10 @@ pub struct DiscoveredInstall {
     pub saves: PathBuf,
     /// The conf files, relative to `root`, in launch order.
     pub confs: Vec<String>,
-    /// An emulator binary shipped inside the install. The publisher shipped a
-    /// build known to run their conf, so it wins over `dosbox` on PATH.
+    /// An emulator binary shipped inside the install. It is the fallback for
+    /// a machine with no `dosbox` on PATH: GOG's bundle is DOSBox 0.74 built
+    /// against libraries current distros no longer ship, so a system dosbox,
+    /// when present, is the one that runs.
     pub emulator: Option<PathBuf>,
 }
 
@@ -285,9 +287,8 @@ fn has_chrdat_files(dir: &Path) -> bool {
 
 /// An executable named `dosbox` shipped inside the install.
 ///
-/// GOG ships both `dosbox/` and `dosbox-staging/`. Staging is preferred: it is
-/// the build GOG launches on current installs, and the one with working sound
-/// and shaders on Linux.
+/// GOG ships one, DOSBox 0.74 under `dosbox/`, with a wrapper script of the
+/// same name. Steam ships none on Linux.
 fn bundled_emulator(root: &Path) -> Option<PathBuf> {
     use std::os::unix::fs::PermissionsExt;
 
@@ -301,9 +302,7 @@ fn bundled_emulator(root: &Path) -> Option<PathBuf> {
             (meta.is_file() && meta.permissions().mode() & 0o111 != 0).then_some(bin)
         })
         .collect();
-    candidates.sort_by_key(|p| {
-        // Sort staging first, then shortest path, so the pick is stable.
-        (!p.to_string_lossy().contains("staging"), p.clone())
-    });
+    // Sorted so the pick is stable when an install somehow holds several.
+    candidates.sort();
     candidates.into_iter().next()
 }

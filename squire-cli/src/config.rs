@@ -63,6 +63,21 @@ impl Install {
             PathBuf::from(&self.root).join(&self.saves)
         }
     }
+
+    /// The command that starts this install's emulator.
+    ///
+    /// A manual install runs whatever `--dosbox` named, because the user said
+    /// so. A discovered install runs the system `dosbox` when there is one:
+    /// GOG's bundled DOSBox 0.74 needs libraries current distros no longer
+    /// ship, and its wrapper script exits 0 even when the binary fails to
+    /// load, so the breakage cannot be detected. The bundle is only the
+    /// fallback for a machine with no dosbox installed.
+    pub fn emulator_command(&self, dosbox_on_path: bool) -> String {
+        if self.kind != InstallKind::Manual && dosbox_on_path {
+            return "dosbox".into();
+        }
+        self.emulator.clone().unwrap_or_else(|| "dosbox".into())
+    }
 }
 
 /// What is remembered between runs.

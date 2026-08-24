@@ -1,6 +1,6 @@
 //! The config file: a map of installs plus the last choice.
 
-use squire_cli::config::{Config, InstallKind};
+use squire_cli::config::{Config, Install, InstallKind};
 
 #[test]
 fn a_v2_config_parses_with_ordered_confs_and_the_last_choice() {
@@ -268,4 +268,55 @@ fn two_installs_of_the_same_kind_and_game_get_distinct_keys() {
     ]);
 
     assert_eq!(config.installs.len(), 2, "{:?}", config.installs.keys());
+}
+
+// --- which emulator a launch uses --------------------------------------------
+//
+// Field-tested on a real GOG install: the bundled DOSBox 0.74 needs libraries
+// a current distro no longer ships, and GOG's wrapper script exits 0 even when
+// the binary fails to load. The system dosbox is the one the user keeps
+// working, so it wins; the bundle is the fallback for a machine without one.
+
+fn install(kind: InstallKind, emulator: Option<&str>) -> Install {
+    Install {
+        game: "pool-of-radiance".into(),
+        kind,
+        root: "/tmp/somewhere".into(),
+        saves: "data/POOLRAD".into(),
+        confs: vec!["a.conf".into()],
+        emulator: emulator.map(String::from),
+        introduced: true,
+    }
+}
+
+#[test]
+fn a_discovered_install_prefers_the_system_dosbox() {
+    let install = install(InstallKind::Gog, Some("/game/dosbox/dosbox"));
+
+    assert_eq!(install.emulator_command(true), "dosbox");
+}
+
+#[test]
+fn a_discovered_install_falls_back_to_its_bundled_emulator() {
+    let install = install(InstallKind::Gog, Some("/game/dosbox/dosbox"));
+
+    assert_eq!(install.emulator_command(false), "/game/dosbox/dosbox");
+}
+
+#[test]
+fn a_manual_install_uses_its_chosen_emulator_over_the_system_one() {
+    // The user named this emulator with --dosbox; that choice is not second-
+    // guessed.
+    let install = install(InstallKind::Manual, Some("dosbox-staging"));
+
+    assert_eq!(install.emulator_command(true), "dosbox-staging");
+}
+
+#[test]
+fn no_emulator_anywhere_still_says_dosbox() {
+    // The launch will fail with the command name in the error, which is the
+    // honest message for a machine with nothing installed.
+    let install = install(InstallKind::Steam, None);
+
+    assert_eq!(install.emulator_command(false), "dosbox");
 }

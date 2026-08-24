@@ -144,7 +144,7 @@ fn the_scan_stops_four_levels_below_a_root() {
 }
 
 #[test]
-fn a_bundled_emulator_wins_over_path() {
+fn a_bundled_emulator_is_recorded() {
     let base = tempdir();
     let root = gog_tree(&base);
 
@@ -153,7 +153,7 @@ fn a_bundled_emulator_wins_over_path() {
     assert_eq!(
         found[0].emulator.as_deref(),
         Some(root.join("dosbox/dosbox").as_path()),
-        "the publisher shipped a build known to run their conf"
+        "the fallback for a machine with no system dosbox"
     );
 }
 
@@ -164,7 +164,7 @@ fn an_install_without_a_bundled_emulator_names_none() {
 
     let found = discover::discover(std::slice::from_ref(&base));
 
-    assert_eq!(found[0].emulator, None, "PATH is the fallback, decided later");
+    assert_eq!(found[0].emulator, None, "the system dosbox is all there is");
 }
 
 #[test]
