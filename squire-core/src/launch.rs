@@ -52,8 +52,14 @@ impl Emulator {
         self.arg("-conf").arg(path)
     }
 
-    /// Sets the folder the emulator starts in. Both publishers' autoexecs use
-    /// relative mounts, so this must be the folder holding the confs.
+    /// Adds one DOS command, run at startup after the confs' autoexec
+    /// sections. Call once per command, in order.
+    pub fn command(self, cmd: impl AsRef<OsStr>) -> Self {
+        self.arg("-c").arg(cmd)
+    }
+
+    /// Sets the folder the emulator starts in. A manual install's conf can
+    /// use relative mounts, so that path is the folder holding the conf.
     pub fn current_dir(mut self, dir: impl AsRef<Path>) -> Self {
         self.current_dir = Some(dir.as_ref().to_owned());
         self

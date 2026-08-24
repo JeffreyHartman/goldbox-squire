@@ -7,7 +7,8 @@ use std::time::Duration;
 use squire_cli::args::{Args, USAGE};
 use squire_cli::attach;
 use squire_cli::wizard;
-use squire_cli::config::Config;
+use squire_cli::conf;
+use squire_cli::config::{Config, InstallKind};
 use squire_cli::manual;
 use squire_cli::output;
 use squire_core::launch::{Emulator, Launched};
@@ -119,14 +120,16 @@ fn run() -> Result<(), String> {
     // points; refuse that before launching. Discovery cannot mis-name one.
     manual::folder_name_check(&install, &game)?;
 
-    // The first use of an install names its conf files, once, so the user
-    // knows where the emulator settings live.
-    if let Some(note) = manual::first_run_note(&install) {
-        eprintln!("gbs: {note}");
-        if let Some(stored) = config.installs.get_mut(&key) {
-            stored.introduced = true;
-            if let Err(e) = config.save() {
-                eprintln!("gbs: warning: could not save the settings: {e}");
+    // The first use of a manual install names its conf files, once, so the
+    // user knows where the emulator settings live.
+    if install.kind == InstallKind::Manual {
+        if let Some(note) = manual::first_run_note(&install) {
+            eprintln!("gbs: {note}");
+            if let Some(stored) = config.installs.get_mut(&key) {
+                stored.introduced = true;
+                if let Err(e) = config.save() {
+                    eprintln!("gbs: warning: could not save the settings: {e}");
+                }
             }
         }
     }
@@ -137,13 +140,28 @@ fn run() -> Result<(), String> {
         None => install.emulator_command(squire_cli::emulator::find())?,
     };
     let mut emulator = Emulator::new(&command);
-    for conf in &install.confs {
-        emulator = emulator.conf(conf);
+    if install.kind == InstallKind::Manual {
+        // The user's conf drives everything, exactly as given. Its relative
+        // mounts resolve against the conf's own folder.
+        for conf in &install.confs {
+            emulator = emulator.conf(conf);
+        }
+        emulator = emulator.current_dir(conf_dir(&install.confs, &install.root));
+    } else {
+        // ADR 0003: gbs owns the configuration. A per-game settings conf the
+        // user edits, plus an autoexec computed from where the game was found.
+        let (settings, created) = conf::ensure(&own_config_dir(), &game)?;
+        if created {
+            eprintln!(
+                "gbs: created {}. Emulator settings live there and are yours to edit.",
+                settings.display()
+            );
+        }
+        emulator = emulator.conf(&settings);
+        for command in conf::autoexec(&install, &game)? {
+            emulator = emulator.command(command);
+        }
     }
-    // Both publishers' autoexecs use relative mounts, so the emulator must
-    // start in the folder holding the confs. For a manual install that is the
-    // conf's own folder; the install root is the save folder there.
-    emulator = emulator.current_dir(conf_dir(&install.confs, &install.root));
     let log = log_path();
     emulator = emulator.log_to(&log);
 
@@ -174,6 +192,13 @@ fn conf_dir(confs: &[String], root: &str) -> PathBuf {
             .unwrap_or_else(|| PathBuf::from(root)),
         _ => PathBuf::from(root),
     }
+}
+
+/// The folder gbs's own files live in: the config file's folder.
+fn own_config_dir() -> PathBuf {
+    Config::path()
+        .and_then(|p| p.parent().map(Path::to_path_buf))
+        .unwrap_or_else(std::env::temp_dir)
 }
 
 /// Where the emulator's output goes, next to the config file.

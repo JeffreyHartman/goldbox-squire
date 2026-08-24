@@ -76,6 +76,7 @@ fn an_empty_save_folder_fails_at_load() {
         id = "broken"
         game = "Broken"
         save_folder = ""
+        start = "GO.EXE"
         record_len = 16
         [dos_config]
         file = "X.CFG"
@@ -99,6 +100,7 @@ fn a_zero_config_line_fails_at_load() {
         id = "broken"
         game = "Broken"
         save_folder = "BROKEN"
+        start = "GO.EXE"
         record_len = 16
         [dos_config]
         file = "X.CFG"
@@ -122,6 +124,7 @@ fn a_malformed_record_table_still_fails_at_load() {
         id = "broken"
         game = "Broken"
         save_folder = "BROKEN"
+        start = "GO.EXE"
         record_len = 4
         [dos_config]
         file = "X.CFG"
@@ -139,4 +142,23 @@ fn a_malformed_record_table_still_fails_at_load() {
         err.contains("runs past"),
         "the table validation fired: {err}"
     );
+}
+
+#[test]
+fn the_registry_names_the_dos_start_command() {
+    let por = games::find("pool-of-radiance").unwrap();
+
+    assert_eq!(por.start, "START.EXE");
+}
+
+#[test]
+fn a_game_without_a_start_command_fails_to_parse() {
+    let text = include_str!("../tables/pool-of-radiance.toml").replace(
+        "start = \"START.EXE\"",
+        "",
+    );
+
+    let err = games::Game::from_toml(&text).unwrap_err();
+
+    assert!(err.to_string().contains("start"), "got: {err}");
 }

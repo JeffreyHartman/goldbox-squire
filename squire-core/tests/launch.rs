@@ -237,3 +237,23 @@ fn the_childs_stdin_is_null() {
     }
     panic!("cat is still waiting on stdin, so stdin was not null");
 }
+
+#[test]
+fn each_dos_command_rides_a_dash_c_flag_in_order() {
+    let e = Emulator::new("dosbox")
+        .conf("/tmp/gbs/por.conf")
+        .command("mount c \"/games/data\"")
+        .command("c:");
+
+    assert_eq!(
+        e.args(),
+        &[
+            "-conf",
+            "/tmp/gbs/por.conf",
+            "-c",
+            "mount c \"/games/data\"",
+            "-c",
+            "c:",
+        ]
+    );
+}

@@ -32,6 +32,8 @@ pub struct Game {
     /// The name of the folder the game's saves live in, `POOLRAD` for Pool of
     /// Radiance. Discovery identifies which game an install holds by it.
     pub save_folder: String,
+    /// The DOS command that starts the game, run inside `save_folder`.
+    pub start: String,
     pub dos_config: DosConfig,
     /// The character record layout.
     pub table: Table,
@@ -45,6 +47,7 @@ struct Meta {
     /// The display name; the record table uses the same key.
     game: String,
     save_folder: String,
+    start: String,
     dos_config: DosConfig,
 }
 
@@ -80,6 +83,12 @@ impl Game {
                 meta.id
             )));
         }
+        if meta.start.is_empty() {
+            return Err(Error::Table(format!(
+                "game `{}` has an empty `start` command",
+                meta.id
+            )));
+        }
         if meta.dos_config.path_line == 0 {
             return Err(Error::Table(format!(
                 "game `{}`: `path_line` is one-based, 0 names no line",
@@ -91,6 +100,7 @@ impl Game {
             id: meta.id,
             name: meta.game,
             save_folder: meta.save_folder,
+            start: meta.start,
             dos_config: meta.dos_config,
             table,
         })
