@@ -47,30 +47,30 @@ pub fn ensure(config_dir: &Path, game: &Game) -> Result<(PathBuf, bool), String>
 /// launches against a stale path. The final `exit` is what makes quitting
 /// the game end the emulator, and with it the watch session.
 pub fn autoexec(install: &Install, game: &Game) -> Result<Vec<String>, String> {
-    let mount = mount_dir(install, &game.save_folder).ok_or_else(|| {
+    let mount = mount_dir(install, &game.game_folder).ok_or_else(|| {
         format!(
             "the install at {} has no `{}` folder in its recorded save path `{}`. \
              Rerun discovery, or fix the config by hand.",
-            install.root, game.save_folder, install.saves
+            install.root, game.game_folder, install.saves
         )
     })?;
     Ok(vec![
         format!("mount c \"{}\"", mount.display()),
         "c:".into(),
-        format!("cd {}", game.save_folder),
+        format!("cd {}", game.game_folder),
         game.start.clone(),
         "exit".into(),
     ])
 }
 
 /// The folder above the game folder: everything in the install's save path
-/// before the component named like the game's save folder.
-fn mount_dir(install: &Install, save_folder: &str) -> Option<PathBuf> {
+/// before the component named like the game's own DOS folder.
+fn mount_dir(install: &Install, game_folder: &str) -> Option<PathBuf> {
     let saves = Path::new(&install.saves);
     let mut mount = PathBuf::from(&install.root);
     for component in saves.components() {
         let name = component.as_os_str().to_str()?;
-        if name.eq_ignore_ascii_case(save_folder) {
+        if name.eq_ignore_ascii_case(game_folder) {
             return Some(mount);
         }
         mount.push(name);

@@ -14,7 +14,7 @@
 
 id = "pool-of-radiance"
 game = "Pool of Radiance"
-save_folder = "POOLRAD"
+game_folder = "POOLRAD"
 start = "START.EXE"   # what the autoexec runs inside that folder
 record_len = 285   # offsets 0x000 through 0x11C
 

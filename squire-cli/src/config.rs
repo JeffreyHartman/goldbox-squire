@@ -68,17 +68,15 @@ impl Install {
     /// search found.
     ///
     /// A manual install runs whatever `--dosbox` named, because the user said
-    /// so. A discovered install runs the system emulator: GOG's bundled
-    /// DOSBox 0.74 needs libraries current distros no longer ship, and its
-    /// wrapper script exits 0 even when the binary fails to load, so the
-    /// breakage cannot be detected. A stored path is the last resort either
-    /// way, and nothing at all is an error naming the way out.
+    /// so. A discovered install runs the system emulator and nothing else:
+    /// ADR 0003 forbids launching a bundled one (GOG's dies on load and its
+    /// wrapper hides the failure), so a stored path from an old config is
+    /// ignored here. Nothing found is an error naming the way out.
     pub fn emulator_command(&self, system: Option<&str>) -> Result<String, String> {
-        let stored = self.emulator.as_deref();
         let picked = if self.kind == InstallKind::Manual {
-            stored.or(system)
+            self.emulator.as_deref().or(system)
         } else {
-            system.or(stored)
+            system
         };
         picked.map(String::from).ok_or_else(|| {
             format!(
@@ -207,9 +205,11 @@ impl Config {
         use squire_core::discover::Publisher;
 
         let before = self.clone();
-        self.installs.retain(|_, install| {
-            install.kind == InstallKind::Manual || PathBuf::from(&install.root).is_dir()
-        });
+        // A scan is the authority on discovered installs: everything
+        // non-manual is replaced by what it found, so a stale reading of an
+        // install (or one whose root vanished) does not survive it.
+        self.installs
+            .retain(|_, install| install.kind == InstallKind::Manual);
 
         for d in found {
             let kind = match d.publisher {
@@ -249,9 +249,28 @@ impl Config {
     /// install's root no longer exists. A manual install never triggers a
     /// rescan, because a scan cannot find what the user named by hand.
     pub fn needs_rediscovery(&self) -> bool {
-        self.installs.values().any(|install| {
-            install.kind != InstallKind::Manual && !PathBuf::from(&install.root).is_dir()
-        })
+        let discovered: Vec<&Install> = self
+            .installs
+            .values()
+            .filter(|install| install.kind != InstallKind::Manual)
+            .collect();
+        if discovered
+            .iter()
+            .any(|install| !PathBuf::from(&install.root).is_dir())
+        {
+            return true;
+        }
+        // Two readings of one game folder are a pre-ticket-026 leftover that
+        // only a rescan can collapse.
+        let mut folders: Vec<PathBuf> = discovered
+            .iter()
+            .map(|install| {
+                let dir = install.save_dir();
+                std::fs::canonicalize(&dir).unwrap_or(dir)
+            })
+            .collect();
+        folders.sort();
+        folders.windows(2).any(|pair| pair[0] == pair[1])
     }
 
     /// The stable key for one discovered install. The same root keeps its key

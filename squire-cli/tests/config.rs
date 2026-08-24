@@ -269,6 +269,44 @@ fn two_installs_of_the_same_kind_and_game_get_distinct_keys() {
     assert_eq!(config.installs.len(), 2, "{:?}", config.installs.keys());
 }
 
+#[test]
+fn absorb_replaces_discovered_installs_wholesale() {
+    // A rescan is the authority on discovered installs. A stale entry whose
+    // root still exists (the old found:/gog: duplicate) must not survive it.
+    let root = tempdir("wholesale");
+    let mut config = Config::default();
+    config.absorb(vec![discovered(&root, None)]);
+    assert!(config.installs.contains_key("found:pool-of-radiance"));
+
+    config.absorb(vec![discovered(&root, Some(Publisher::Gog))]);
+
+    assert!(
+        !config.installs.contains_key("found:pool-of-radiance"),
+        "the stale reading of the same install survived: {:?}",
+        config.installs.keys().collect::<Vec<_>>()
+    );
+    assert!(config.installs.contains_key("gog:pool-of-radiance"));
+}
+
+#[test]
+fn two_installs_reaching_one_game_folder_trigger_rediscovery() {
+    // An existing config can carry the found:/gog: duplicate from before
+    // ticket 026. Only a rescan can collapse it, so it must trigger one.
+    // Two roots, one game folder: a hand setup above a GOG install.
+    let base = tempdir("dup-rediscover");
+    let inner = base.join("pool-of-radiance");
+    std::fs::create_dir_all(inner.join("data/POOLRAD")).unwrap();
+    let mut config = Config::default();
+    config.absorb(vec![discovered(&inner, Some(Publisher::Gog))]);
+    assert!(!config.needs_rediscovery());
+
+    let mut hand = discovered(&base, None);
+    hand.saves = PathBuf::from("pool-of-radiance/data/POOLRAD");
+    config.absorb(vec![discovered(&inner, Some(Publisher::Gog)), hand]);
+
+    assert!(config.needs_rediscovery());
+}
+
 // --- which emulator a launch uses --------------------------------------------
 //
 // Field-tested on a real GOG install: the bundled DOSBox 0.74 needs libraries
@@ -300,15 +338,15 @@ fn a_discovered_install_prefers_the_system_emulator() {
 }
 
 #[test]
-fn a_discovered_install_falls_back_to_a_stored_emulator() {
-    // An old config can still carry a bundled emulator path; with no system
-    // emulator it is better than nothing.
+fn a_discovered_install_never_launches_a_stored_bundled_emulator() {
+    // ADR 0003: bundled emulators are no longer launched, full stop. An old
+    // config can still carry one; with no system emulator that is an error,
+    // not a launch of the known-broken bundle.
     let install = install(InstallKind::Gog, Some("/game/dosbox/dosbox"));
 
-    assert_eq!(
-        install.emulator_command(None).unwrap(),
-        "/game/dosbox/dosbox"
-    );
+    let err = install.emulator_command(None).unwrap_err();
+
+    assert!(err.contains("--dosbox"), "got: {err}");
 }
 
 #[test]

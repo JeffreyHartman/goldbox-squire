@@ -18,8 +18,13 @@ Found means Squire recognized the shape but no launch script named a publisher.
 Manual means the user named the pieces themselves rather than letting Squire
 find them.
 
+**Game folder.** The game's own DOS folder, named `POOLRAD` for Pool of
+Radiance. Discovery identifies which game an install holds by this name, and
+the computed autoexec enters it to start the game.
+
 **Save folder.** The folder inside an install holding the save files. The game
-writes here during play.
+writes here during play. GOG's game folder is also its save folder; Steam
+nests a `SAVE` folder inside the game folder.
 
 **Save slot.** One saved game, named by a letter A through J. This is what the
 player picks in the game's own load menu. GOG ships slots A and J populated.

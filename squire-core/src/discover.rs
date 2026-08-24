@@ -2,9 +2,9 @@
 //!
 //! Discovery is structural, not a list of publishers (ADR 0001). An install is
 //! a directory holding a conf file with an `[autoexec]` section containing a
-//! `mount` line, plus a save folder, named per game, holding `CHRDAT*.SAV`
-//! files. Which game the install holds comes from that folder's name, via the
-//! registry. A layout this has never seen fails cleanly to the manual path.
+//! `mount` line, plus a game folder holding `CHRDAT*.SAV` files, directly or
+//! one level down. Which game the install holds comes from that folder's
+//! name, via the registry. A layout this has never seen fails cleanly to the manual path.
 
 use std::path::{Path, PathBuf};
 
@@ -145,7 +145,7 @@ fn examine(dir: &Path, games: &[games::Game]) -> Vec<DiscoveredInstall> {
 
     let mut found = Vec::new();
     for game in games {
-        let Some(saves) = find_save_folder(dir, &game.save_folder) else {
+        let Some(saves) = find_saves(dir, &game.game_folder) else {
             continue;
         };
         found.push(DiscoveredInstall {
@@ -202,18 +202,18 @@ fn has_autoexec_mount(text: &str) -> bool {
 }
 
 /// The folder holding `CHRDAT*.SAV` files inside a folder named like the
-/// game's save folder, relative to the install root.
+/// game's own DOS folder, relative to the install root.
 ///
 /// GOG keeps the saves in the game folder itself (`data/POOLRAD`). Steam
 /// keeps them one level inside it (`GAME/POOLRAD/SAVE`), so a direct child
 /// holding `CHRDAT` files counts too. Children are tried in sorted order, so
 /// the pick is stable.
-fn find_save_folder(root: &Path, folder_name: &str) -> Option<PathBuf> {
+fn find_saves(root: &Path, game_folder: &str) -> Option<PathBuf> {
     let mut dirs = Vec::new();
     collect_dirs(root, 0, &mut dirs);
     for dir in dirs {
         let name = dir.file_name()?.to_str()?;
-        if !name.eq_ignore_ascii_case(folder_name) {
+        if !name.eq_ignore_ascii_case(game_folder) {
             continue;
         }
         if has_chrdat_files(&dir) {

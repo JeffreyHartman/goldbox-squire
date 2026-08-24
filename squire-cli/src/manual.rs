@@ -1,6 +1,6 @@
 //! Guards that only the manual install path needs.
 //!
-//! A discovered install was matched by its save folder's name, so it cannot
+//! A discovered install was matched by its game folder's name, so it cannot
 //! be mis-named. A hand-named one can, and the game would then read and write
 //! somewhere the user is not looking.
 

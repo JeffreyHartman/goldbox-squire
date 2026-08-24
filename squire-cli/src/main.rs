@@ -150,7 +150,7 @@ fn run() -> Result<(), String> {
     } else {
         // ADR 0003: gbs owns the configuration. A per-game settings conf the
         // user edits, plus an autoexec computed from where the game was found.
-        let (settings, created) = conf::ensure(&own_config_dir(), &game)?;
+        let (settings, created) = conf::ensure(&own_config_dir()?, &game)?;
         if created {
             eprintln!(
                 "gbs: created {}. Emulator settings live there and are yours to edit.",
@@ -158,8 +158,8 @@ fn run() -> Result<(), String> {
             );
         }
         emulator = emulator.conf(&settings);
-        for command in conf::autoexec(&install, &game)? {
-            emulator = emulator.command(command);
+        for dos_command in conf::autoexec(&install, &game)? {
+            emulator = emulator.command(dos_command);
         }
     }
     let log = log_path();
@@ -195,10 +195,13 @@ fn conf_dir(confs: &[String], root: &str) -> PathBuf {
 }
 
 /// The folder gbs's own files live in: the config file's folder.
-fn own_config_dir() -> PathBuf {
+///
+/// The settings conf is promised to the user as theirs to keep, so a machine
+/// with no config folder is an error, never a silent file in /tmp.
+fn own_config_dir() -> Result<PathBuf, String> {
     Config::path()
         .and_then(|p| p.parent().map(Path::to_path_buf))
-        .unwrap_or_else(std::env::temp_dir)
+        .ok_or_else(|| "no config folder found. Set HOME or XDG_CONFIG_HOME.".into())
 }
 
 /// Where the emulator's output goes, next to the config file.

@@ -29,10 +29,11 @@ pub struct Game {
     pub id: String,
     /// The display name.
     pub name: String,
-    /// The name of the folder the game's saves live in, `POOLRAD` for Pool of
-    /// Radiance. Discovery identifies which game an install holds by it.
-    pub save_folder: String,
-    /// The DOS command that starts the game, run inside `save_folder`.
+    /// The game's own DOS folder name, `POOLRAD` for Pool of Radiance.
+    /// Discovery identifies which game an install holds by it, and the saves
+    /// live in it or one level under it.
+    pub game_folder: String,
+    /// The DOS command that starts the game, run inside `game_folder`.
     pub start: String,
     pub dos_config: DosConfig,
     /// The character record layout.
@@ -46,7 +47,7 @@ struct Meta {
     id: String,
     /// The display name; the record table uses the same key.
     game: String,
-    save_folder: String,
+    game_folder: String,
     start: String,
     dos_config: DosConfig,
 }
@@ -77,9 +78,9 @@ impl Game {
         if meta.id.is_empty() {
             return Err(Error::Table("`id` is empty".into()));
         }
-        if meta.save_folder.is_empty() {
+        if meta.game_folder.is_empty() {
             return Err(Error::Table(format!(
-                "game `{}` has an empty `save_folder`",
+                "game `{}` has an empty `game_folder`",
                 meta.id
             )));
         }
@@ -99,7 +100,7 @@ impl Game {
         Ok(Game {
             id: meta.id,
             name: meta.game,
-            save_folder: meta.save_folder,
+            game_folder: meta.game_folder,
             start: meta.start,
             dos_config: meta.dos_config,
             table,

@@ -26,11 +26,11 @@ fn an_unknown_id_is_none() {
 }
 
 #[test]
-fn the_game_knows_its_save_folder() {
+fn the_game_knows_its_game_folder() {
     // Install discovery identifies which game a folder holds by this name.
     let por = games::find("pool-of-radiance").unwrap();
 
-    assert_eq!(por.save_folder, "POOLRAD");
+    assert_eq!(por.game_folder, "POOLRAD");
 }
 
 #[test]
@@ -53,7 +53,7 @@ fn the_game_carries_its_record_table() {
 
 #[test]
 fn a_table_missing_the_registry_data_fails_at_load() {
-    // A record table alone is not a game entry. The id, the save folder and
+    // A record table alone is not a game entry. The id, the game folder and
     // the DOS config location are what the wizard and discovery run on.
     let text = r#"
         game = "Half a Game"
@@ -71,11 +71,11 @@ fn a_table_missing_the_registry_data_fails_at_load() {
 }
 
 #[test]
-fn an_empty_save_folder_fails_at_load() {
+fn an_empty_game_folder_fails_at_load() {
     let text = r#"
         id = "broken"
         game = "Broken"
-        save_folder = ""
+        game_folder = ""
         start = "GO.EXE"
         record_len = 16
         [dos_config]
@@ -90,7 +90,7 @@ fn an_empty_save_folder_fails_at_load() {
 
     let err = games::Game::from_toml(text).unwrap_err().to_string();
 
-    assert!(err.contains("save_folder"), "got: {err}");
+    assert!(err.contains("game_folder"), "got: {err}");
 }
 
 #[test]
@@ -99,7 +99,7 @@ fn a_zero_config_line_fails_at_load() {
     let text = r#"
         id = "broken"
         game = "Broken"
-        save_folder = "BROKEN"
+        game_folder = "BROKEN"
         start = "GO.EXE"
         record_len = 16
         [dos_config]
@@ -123,7 +123,7 @@ fn a_malformed_record_table_still_fails_at_load() {
     let text = r#"
         id = "broken"
         game = "Broken"
-        save_folder = "BROKEN"
+        game_folder = "BROKEN"
         start = "GO.EXE"
         record_len = 4
         [dos_config]
