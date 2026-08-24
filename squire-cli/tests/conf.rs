@@ -21,6 +21,10 @@ fn a_missing_settings_conf_is_created_from_the_template() {
     let text = std::fs::read_to_string(&path).unwrap();
     assert!(text.contains("fullscreen = false"), "got: {text}");
     assert!(text.contains("Pool of Radiance"), "got: {text}");
+    // Sound must work whichever device the install's own DOS config names:
+    // GOG ships PC speaker, Steam ships Tandy.
+    assert!(text.contains("tandy = on"), "got: {text}");
+    assert!(text.contains("compressor = off"), "got: {text}");
 }
 
 #[test]

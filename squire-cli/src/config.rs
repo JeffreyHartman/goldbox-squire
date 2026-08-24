@@ -43,10 +43,12 @@ pub struct Install {
     pub root: String,
     /// The save folder, relative to `root`. Empty means the root itself.
     pub saves: String,
-    /// The emulator configuration files, in launch order. Later files
-    /// override earlier ones, so the order is part of the install.
+    /// A manual install's conf files, in launch order. Later files override
+    /// earlier ones. Discovered installs carry none: they launch gbs's own
+    /// configuration (ADR 0003).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub confs: Vec<String>,
-    /// An emulator binary that overrides `dosbox` on PATH.
+    /// A manual install's emulator choice, from `--dosbox`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub emulator: Option<String>,
     /// Whether the first-run note naming the conf files was printed.
@@ -254,6 +256,11 @@ impl Config {
             .values()
             .filter(|install| install.kind != InstallKind::Manual)
             .collect();
+        // Knowing only manual installs is not knowing the disk: a migrated v1
+        // config holds one manual entry and must not hide the real installs.
+        if discovered.is_empty() {
+            return true;
+        }
         if discovered
             .iter()
             .any(|install| !PathBuf::from(&install.root).is_dir())

@@ -32,7 +32,16 @@ pub fn ensure(config_dir: &Path, game: &Game) -> Result<(PathBuf, bool), String>
          # The launch commands (mount, start) are not in here: gbs computes\n\
          # them each run from where it found the game.\n\n\
          [sdl]\n\
-         fullscreen = false\n",
+         fullscreen = false\n\n\
+         # Both sound devices a Gold Box game can name in its own DOS config:\n\
+         # the PC speaker is on by default, and tandy covers installs whose\n\
+         # config names Tandy sound (Steam ships that way).\n\
+         [speaker]\n\
+         tandy = on\n\n\
+         # dosbox-staging's mixer compressor ducks short beeps, which is most\n\
+         # of what these games produce. Other emulators ignore this section.\n\
+         [mixer]\n\
+         compressor = off\n",
         game.name
     );
     std::fs::write(&path, text).map_err(|e| format!("cannot write {}: {e}", path.display()))?;

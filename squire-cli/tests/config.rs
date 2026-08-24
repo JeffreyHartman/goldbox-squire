@@ -219,18 +219,30 @@ fn a_vanished_root_asks_for_rediscovery() {
 }
 
 #[test]
-fn a_manual_install_never_triggers_rediscovery() {
+fn a_vanished_manual_root_never_triggers_rediscovery() {
     // Manual means the user named the pieces; a scan cannot find them again,
     // so a vanished manual root is the user's to fix, not a reason to rescan.
-    let text = r#"
+    // A discovered install with a healthy root sits alongside, because a
+    // config knowing no discovered installs rescans for that reason alone.
+    let healthy = tempdir("manual-no-rescan");
+    let text = format!(
+        r#"
         [installs."manual:pool-of-radiance"]
         game = "pool-of-radiance"
         kind = "manual"
         root = "/gone/away"
         saves = ""
         confs = ["por.conf"]
-    "#;
-    let config = Config::from_toml(text).unwrap();
+
+        [installs."gog:pool-of-radiance"]
+        game = "pool-of-radiance"
+        kind = "gog"
+        root = "{}"
+        saves = ""
+    "#,
+        healthy.display()
+    );
+    let config = Config::from_toml(&text).unwrap();
 
     assert!(!config.needs_rediscovery());
 }
@@ -286,6 +298,22 @@ fn absorb_replaces_discovered_installs_wholesale() {
         config.installs.keys().collect::<Vec<_>>()
     );
     assert!(config.installs.contains_key("gog:pool-of-radiance"));
+}
+
+#[test]
+fn a_config_with_no_discovered_installs_triggers_rediscovery() {
+    // A v1 config migrates to one manual install, which used to sail past
+    // both scan triggers: the user never saw their GOG and Steam installs.
+    let mut config = Config::default();
+    let args = squire_cli::args::Args::parse(
+        ["--conf", "/hand/por.conf", "--game-dir", "/hand/POOLRAD"]
+            .iter()
+            .map(|s| s.to_string()),
+    )
+    .unwrap();
+    config.remember_manual(&args);
+
+    assert!(config.needs_rediscovery());
 }
 
 #[test]
