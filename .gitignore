@@ -1,5 +1,6 @@
 /target
 /docs
+/wayfinder
 
-# Jeff's first Rust build, kept as a source file but not as a binary
+# The first Rust build, kept as a source file but not as a binary
 /hello
