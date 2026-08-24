@@ -22,6 +22,38 @@ pub struct DosConfig {
     pub path_line: usize,
 }
 
+/// How a game writes its saves to disk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SaveShape {
+    /// One file per character: `CHRDAT{slot}{index}.{extension}`. Ten of the
+    /// twelve games save this way.
+    Chrdat,
+    /// The whole party in one file per slot: `SAVGAM{slot}.{extension}`.
+    /// Unlimited Adventures and The Dark Queen of Krynn save this way.
+    PartyFile,
+}
+
+/// The save files of one game: their shape and where they sit.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Saves {
+    pub shape: SaveShape,
+    /// The save files' extension, `SAV` for most games. Death Knights of
+    /// Krynn writes `GAM`, Unlimited Adventures `CSV`, Dark Queen `QSV`.
+    pub extension: String,
+    /// Whether saves live per design: `{design}.DSN/SAVE/` inside the game
+    /// folder. Only Unlimited Adventures, whose adventures are modules.
+    #[serde(default)]
+    pub designs: bool,
+    /// Where a party file stores the party's size, when that is known.
+    #[serde(default)]
+    pub party_size_offset: Option<usize>,
+    /// Where a party file's first character record starts, when known.
+    /// Without it the whole file is scanned and validation decides.
+    #[serde(default)]
+    pub first_record_offset: Option<usize>,
+}
+
 /// One compiled-in game.
 #[derive(Debug, Clone)]
 pub struct Game {
@@ -35,7 +67,14 @@ pub struct Game {
     pub game_folder: String,
     /// The DOS command that starts the game, run inside `game_folder`.
     pub start: String,
-    pub dos_config: DosConfig,
+    /// The emulated hardware the game expects, for the settings conf gbs
+    /// creates once: `ega` for the EGA-era titles, `svga_s3` for the VGA ones.
+    pub machine: String,
+    /// The game's own DOS config, when the game ships one this tool knows.
+    /// `None` skips the manual-path folder-name check, which is honest:
+    /// no check beats a guessed one.
+    pub dos_config: Option<DosConfig>,
+    pub saves: Saves,
     /// The character record layout.
     pub table: Table,
 }
@@ -49,10 +88,15 @@ struct Meta {
     game: String,
     game_folder: String,
     start: String,
-    dos_config: DosConfig,
+    machine: String,
+    dos_config: Option<DosConfig>,
+    saves: Saves,
 }
 
-const TABLES: &[&str] = &[include_str!("../tables/pool-of-radiance.toml")];
+const TABLES: &[&str] = &[
+    include_str!("../tables/pool-of-radiance.toml"),
+    include_str!("../tables/unlimited-adventures.toml"),
+];
 
 /// Every compiled-in game.
 ///
@@ -90,9 +134,38 @@ impl Game {
                 meta.id
             )));
         }
-        if meta.dos_config.path_line == 0 {
+        if meta.machine.is_empty() {
             return Err(Error::Table(format!(
-                "game `{}`: `path_line` is one-based, 0 names no line",
+                "game `{}` has an empty `machine`",
+                meta.id
+            )));
+        }
+        if let Some(dos_config) = &meta.dos_config {
+            if dos_config.path_line == 0 {
+                return Err(Error::Table(format!(
+                    "game `{}`: `path_line` is one-based, 0 names no line",
+                    meta.id
+                )));
+            }
+        }
+        let ext = &meta.saves.extension;
+        if ext.is_empty() || ext.contains('.') {
+            return Err(Error::Table(format!(
+                "game `{}`: the saves `extension` is written without a dot, like `SAV`",
+                meta.id
+            )));
+        }
+        if meta.saves.designs && meta.saves.shape != SaveShape::PartyFile {
+            return Err(Error::Table(format!(
+                "game `{}`: `designs` needs the `party_file` shape",
+                meta.id
+            )));
+        }
+        if meta.saves.shape == SaveShape::Chrdat
+            && (meta.saves.party_size_offset.is_some() || meta.saves.first_record_offset.is_some())
+        {
+            return Err(Error::Table(format!(
+                "game `{}`: the party file offsets mean nothing to the `chrdat` shape",
                 meta.id
             )));
         }
@@ -102,7 +175,9 @@ impl Game {
             name: meta.game,
             game_folder: meta.game_folder,
             start: meta.start,
+            machine: meta.machine,
             dos_config: meta.dos_config,
+            saves: meta.saves,
             table,
         })
     }

@@ -22,17 +22,21 @@ pub fn folder_name_check(install: &Install, game: &Game) -> Result<(), String> {
     if install.kind != InstallKind::Manual {
         return Ok(());
     }
+    // A game with no known DOS config proves nothing either way.
+    let Some(dos_config) = &game.dos_config else {
+        return Ok(());
+    };
     let save_dir = install.save_dir();
     let Some(folder) = save_dir.file_name().and_then(|n| n.to_str()) else {
         return Ok(());
     };
-    let Some(cfg_path) = find_file(&save_dir, &game.dos_config.file) else {
+    let Some(cfg_path) = find_file(&save_dir, &dos_config.file) else {
         return Ok(());
     };
     let Ok(text) = std::fs::read_to_string(&cfg_path) else {
         return Ok(());
     };
-    let Some(line) = text.lines().nth(game.dos_config.path_line - 1) else {
+    let Some(line) = text.lines().nth(dos_config.path_line - 1) else {
         return Ok(());
     };
     // The line reads like `C:\POOLRAD\`; its leaf is the folder the game uses.
@@ -49,9 +53,9 @@ pub fn folder_name_check(install: &Install, game: &Game) -> Result<(), String> {
          folder. Two fixes: rename the folder to `{expected}`, or adjust the \
          conf's mount and {} to point at `{folder}`.",
         cfg_path.display(),
-        game.dos_config.path_line,
+        dos_config.path_line,
         line.trim(),
-        game.dos_config.file,
+        dos_config.file,
     ))
 }
 

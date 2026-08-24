@@ -124,18 +124,19 @@ impl<R: Reader> Session<R> {
             .ok_or_else(|| Error::Table("the table has no field `name`".into()))?;
 
         for anchor in &self.anchors {
-            let mut buf = vec![0u8; field.len];
+            // The needle is the name as the record stores it, prefix or
+            // terminator included, so this check is exact for both shapes.
+            let Some(needle) = crate::record::name_needle(field, &anchor.name) else {
+                return Ok(false);
+            };
+            let mut buf = vec![0u8; needle.len()];
             match self.reader.read(anchor.addr + field.offset, &mut buf) {
                 Ok(_) => {}
                 // The address went away. That is staleness, not a failure.
                 Err(Error::Unmapped { .. }) => return Ok(false),
                 Err(e) => return Err(e),
             }
-            let len = buf[0] as usize;
-            if len == 0 || len > field.len - 1 {
-                return Ok(false);
-            }
-            if &buf[1..1 + len] != anchor.name.as_bytes() {
+            if buf != needle {
                 return Ok(false);
             }
         }

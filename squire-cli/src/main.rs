@@ -47,17 +47,16 @@ fn run() -> Result<(), String> {
     // discovery, and nothing written to the config.
     if let Some(pid) = args.pid {
         let resolved = attach::resolve(&args, &config)?;
-        let table = games::find(&resolved.game_id)
-            .expect("resolve validated the game id")
-            .table;
+        let game = games::find(&resolved.game_id).expect("resolve validated the game id");
         let mut session = Session::new(
             ProcessReader::new(pid),
-            table,
+            game.table.clone(),
             resolved.names.clone(),
         );
         return watch(
             &mut session,
             &args,
+            &game,
             None,
             resolved.slot,
             resolved.names,
@@ -80,7 +79,7 @@ fn run() -> Result<(), String> {
     }
 
     let before = config.clone();
-    let (key, slot) = wizard::choose(
+    let (key, save_dir, slot) = wizard::choose(
         &mut std::io::stdin().lock(),
         &mut std::io::stderr(),
         &mut config,
@@ -94,10 +93,9 @@ fn run() -> Result<(), String> {
         }
     }
     let install = config.installs[&key].clone();
-    let save_dir = install.save_dir();
-    let names = saves::slot_party_names(&save_dir, slot).map_err(|e| e.to_string())?;
     let game = games::find(&install.game)
         .ok_or_else(|| format!("unknown game `{}` in the config", install.game))?;
+    let names = saves::slot_party_names(&game, &save_dir, slot).map_err(|e| e.to_string())?;
     let table = game.table.clone();
 
     // A hand-named folder can disagree with where the game's own DOS config
@@ -138,6 +136,7 @@ fn run() -> Result<(), String> {
     watch(
         &mut session,
         &args,
+        &game,
         Some(&mut running),
         slot,
         names,
@@ -179,6 +178,7 @@ const HINT_AFTER: Duration = Duration::from_secs(10);
 fn watch<R: squire_core::mem::Reader>(
     session: &mut Session<R>,
     args: &Args,
+    game: &games::Game,
     mut running: Option<&mut Launched>,
     mut slot: char,
     mut names: Vec<String>,
@@ -255,9 +255,12 @@ fn watch<R: squire_core::mem::Reader>(
             Ok(_) => {}
         }
         let dir = save_dir.expect("stdin_open starts false without a save_dir");
-        if let Some((new_slot, new_names)) =
-            wizard::repick_slot(&mut std::io::stdin().lock(), &mut std::io::stderr(), dir)?
-        {
+        if let Some((new_slot, new_names)) = wizard::repick_slot(
+            &mut std::io::stdin().lock(),
+            &mut std::io::stderr(),
+            game,
+            dir,
+        )? {
             slot = new_slot;
             names = new_names;
             session.retarget(names.clone());

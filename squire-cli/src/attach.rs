@@ -34,21 +34,22 @@ pub fn resolve(args: &Args, config: &Config) -> Result<Resolved, String> {
             .clone()
             .ok_or("--pid cannot guess the game. Pass --game <ID>.")?,
     };
-    if games::find(&game_id).is_none() {
+    let Some(game) = games::find(&game_id) else {
         let known: Vec<String> = games::games().into_iter().map(|g| g.id).collect();
         return Err(format!(
             "unknown game `{game_id}`. Compiled-in games: {}",
             known.join(", ")
         ));
-    }
+    };
 
     let save_dir = match &args.game_dir {
         Some(dir) => PathBuf::from(dir),
         None => install_of(config, &game_id)
             .ok_or("--pid cannot guess the save folder. Pass --game-dir <DIR>.")?,
     };
+    let save_dir = resolve_design(&game, save_dir)?;
 
-    let slots = saves::populated_slots(&save_dir).map_err(|e| e.to_string())?;
+    let slots = saves::populated_slots(&game, &save_dir).map_err(|e| e.to_string())?;
     let slot = match args.slot {
         Some(letter) if slots.iter().any(|s| s.letter == letter) => letter,
         Some(letter) => {
@@ -80,6 +81,26 @@ pub fn resolve(args: &Args, config: &Config) -> Result<Resolved, String> {
         slot,
         names,
     })
+}
+
+/// Narrows a designs game's folder to one design's save folder, without
+/// asking. A folder already holding save files passes through, one lone
+/// design with a saved game is the only possible answer, and anything else
+/// is an error naming the candidates.
+fn resolve_design(game: &games::Game, dir: PathBuf) -> Result<PathBuf, String> {
+    if !game.saves.designs || saves::holds_save_files(game, &dir) {
+        return Ok(dir);
+    }
+    let designs = saves::designs(game, &dir).map_err(|e| e.to_string())?;
+    if let [only] = designs.as_slice() {
+        return Ok(only.save_dir.clone());
+    }
+    let names: Vec<String> = designs.iter().map(|d| d.name.clone()).collect();
+    Err(format!(
+        "--pid cannot guess the design. Designs with saves: {}. Pass \
+         --game-dir pointing at one design's SAVE folder.",
+        names.join(", ")
+    ))
 }
 
 /// The save folder of a remembered install of this game, preferring the

@@ -40,8 +40,11 @@ pub struct Character {
     pub charisma: u8,
 }
 
-/// The names of the seven class level fields, highest of which is the level.
-const LEVEL_FIELDS: [&str; 7] = [
+/// The names of the class level fields, highest of which is the level. A
+/// table holds the ones its game has: the Krynn games and Unlimited
+/// Adventures add a knight, and the Buck Rogers games store no per-class
+/// levels at all, only `level_highest_1`.
+const LEVEL_FIELDS: [&str; 9] = [
     "level_cleric",
     "level_fighter",
     "level_paladin",
@@ -49,6 +52,8 @@ const LEVEL_FIELDS: [&str; 7] = [
     "level_mage",
     "level_thief",
     "level_monk",
+    "level_knight",
+    "level_highest_1",
 ];
 
 /// The seven fields holding an ability score.
@@ -111,21 +116,12 @@ pub fn validate(table: &Table, bytes: &[u8]) -> Result<(), Error> {
 
     let reject = |why: String| Err(Error::NotARecord(why));
 
-    // The name. A length byte of 0 or above 15 cannot be right, and the
-    // characters are upper-case ASCII, digits, spaces and punctuation.
+    // The name: at least one character, at most the field's capacity, every
+    // character printable ASCII. Both string shapes get the same scrutiny.
     let name_field = field(table, "name")?;
     // Every read here goes through `get`. The bytes come from another
     // process's memory, so this code must never index on trust.
-    let len = *bytes
-        .get(name_field.offset)
-        .ok_or_else(|| Error::NotARecord("the name field is past the end".into()))?
-        as usize;
-    if len == 0 || len > name_field.len - 1 {
-        return reject(format!("name length byte is {len}"));
-    }
-    let name_bytes = bytes
-        .get(name_field.offset + 1..name_field.offset + 1 + len)
-        .ok_or_else(|| Error::NotARecord("the name runs past the end".into()))?;
+    let name_bytes = name_bytes(name_field, bytes).map_err(Error::NotARecord)?;
     for (i, &b) in name_bytes.iter().enumerate() {
         if !(0x20..=0x7E).contains(&b) {
             return reject(format!("name byte {i} is {b:#04x}, which is not printable"));
@@ -197,14 +193,84 @@ fn field<'t>(table: &'t Table, name: &str) -> Result<&'t crate::table::Field, Er
         .ok_or_else(|| Error::Table(format!("the table has no field `{name}`")))
 }
 
+/// The characters of the name field, without prefix or terminator.
+///
+/// The error is the reason the bytes cannot be a name, worded for
+/// [`validate`]'s rejection message.
+fn name_bytes<'b>(f: &crate::table::Field, bytes: &'b [u8]) -> Result<&'b [u8], String> {
+    match f.kind {
+        FieldKind::PascalString => {
+            let len = *bytes
+                .get(f.offset)
+                .ok_or_else(|| "the name field is past the end".to_string())?
+                as usize;
+            if len == 0 || len > f.len - 1 {
+                return Err(format!("name length byte is {len}"));
+            }
+            bytes
+                .get(f.offset + 1..f.offset + 1 + len)
+                .ok_or_else(|| "the name runs past the end".to_string())
+        }
+        FieldKind::TerminatedString => {
+            let raw = bytes
+                .get(f.offset..f.offset + f.len)
+                .ok_or_else(|| "the name field is past the end".to_string())?;
+            let len = raw
+                .iter()
+                .position(|&b| b == 0)
+                .ok_or_else(|| "the name has no terminator".to_string())?;
+            if len == 0 {
+                return Err("the name is empty".to_string());
+            }
+            Ok(&raw[..len])
+        }
+        _ => Err("the name field is not a string".to_string()),
+    }
+}
+
+/// The bytes that sit at the name field's offset when it holds `name`.
+///
+/// This is what a scanner searches for: the length prefix or the terminator
+/// comes along, so a prefix of a longer name never matches. `None` when the
+/// name cannot fit the field, which makes searching for it pointless.
+pub fn name_needle(f: &crate::table::Field, name: &str) -> Option<Vec<u8>> {
+    if name.is_empty() || name.len() > f.len - 1 {
+        return None;
+    }
+    match f.kind {
+        FieldKind::PascalString => {
+            let mut needle = Vec::with_capacity(name.len() + 1);
+            needle.push(name.len() as u8);
+            needle.extend_from_slice(name.as_bytes());
+            Some(needle)
+        }
+        FieldKind::TerminatedString => {
+            let mut needle = Vec::with_capacity(name.len() + 1);
+            needle.extend_from_slice(name.as_bytes());
+            needle.push(0);
+            Some(needle)
+        }
+        _ => None,
+    }
+}
+
 fn read_name(table: &Table, bytes: &[u8]) -> Result<String, Error> {
     let f = field(table, "name")?;
-    let len = bytes
-        .get(f.offset)
-        .map(|&n| (n as usize).min(f.len - 1))
-        .unwrap_or(0);
-    let raw = bytes.get(f.offset + 1..f.offset + 1 + len).unwrap_or(&[]);
+    let raw = name_bytes(f, bytes).unwrap_or(&[]);
     Ok(String::from_utf8_lossy(raw).into_owned())
+}
+
+/// The name stored at the record's name field, when the bytes hold a
+/// plausible one: present, non-empty, printable ASCII throughout.
+///
+/// This is the save-file readers' way in: they take only the name from a
+/// record on disk, because every other number goes stale during play.
+pub fn name_at(table: &Table, bytes: &[u8]) -> Option<String> {
+    let f = table.field("name")?;
+    let raw = name_bytes(f, bytes).ok()?;
+    raw.iter()
+        .all(|&b| (0x20..=0x7E).contains(&b))
+        .then(|| String::from_utf8_lossy(raw).into_owned())
 }
 
 fn u8_at(table: &Table, bytes: &[u8], name: &str) -> Option<u8> {

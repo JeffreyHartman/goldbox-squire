@@ -22,6 +22,9 @@ pub enum FieldKind {
     U32le,
     /// One length byte, then that many characters.
     PascalString,
+    /// Up to `len - 1` characters, then a terminator byte of zero. Unlimited
+    /// Adventures and The Dark Queen of Krynn store the name this way.
+    TerminatedString,
     /// One byte whose meaning comes from a named enumeration.
     Enum,
 }
@@ -33,7 +36,7 @@ impl FieldKind {
             FieldKind::U8 | FieldKind::Enum => Some(1),
             FieldKind::U16le => Some(2),
             FieldKind::U32le => Some(4),
-            FieldKind::PascalString => None,
+            FieldKind::PascalString | FieldKind::TerminatedString => None,
         }
     }
 }

@@ -34,10 +34,11 @@ pub fn ensure(config_dir: &Path, game: &Game) -> Result<(PathBuf, bool), String>
          # them each run from where it found the game.\n\n\
          [sdl]\n\
          fullscreen = false\n\n\
-         # An EGA-era engine on faithful hardware; the CRT shader then picks\n\
-         # EGA scanline behavior.\n\
+         # The hardware this game expects. On an EGA-era title the CRT\n\
+         # shader then picks EGA scanline behavior; the VGA titles get a\n\
+         # standard VGA machine.\n\
          [dosbox]\n\
-         machine = ega\n\n\
+         machine = {}\n\n\
          # Both sound devices this game can name in its own DOS config: the\n\
          # PC speaker (impulse is the high-accuracy model), and Tandy for\n\
          # installs whose config names it (Steam ships that way).\n\
@@ -53,7 +54,7 @@ pub fn ensure(config_dir: &Path, game: &Game) -> Result<(PathBuf, bool), String>
          # Middle-click still captures on the day you want it.\n\
          [mouse]\n\
          mouse_capture = seamless\n",
-        game.name
+        game.name, game.machine
     );
     std::fs::write(&path, text).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
     Ok((path, true))

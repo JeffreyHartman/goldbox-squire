@@ -39,8 +39,40 @@ fn the_game_knows_its_dos_config_file_and_data_path_line() {
     // check reads it to explain a folder-name mismatch.
     let por = games::find("pool-of-radiance").unwrap();
 
-    assert_eq!(por.dos_config.file, "POOL.CFG");
-    assert_eq!(por.dos_config.path_line, 3);
+    let dos_config = por.dos_config.expect("Pool of Radiance ships POOL.CFG");
+    assert_eq!(dos_config.file, "POOL.CFG");
+    assert_eq!(dos_config.path_line, 3);
+}
+
+#[test]
+fn the_registry_lists_unlimited_adventures() {
+    let frua = games::find("unlimited-adventures").expect("FRUA is compiled in");
+
+    assert_eq!(frua.name, "Unlimited Adventures");
+    assert_eq!(frua.game_folder, "UA");
+    assert_eq!(frua.start, "START.BAT");
+    // No known game-owned config pins its data path, so no check runs.
+    assert!(frua.dos_config.is_none());
+}
+
+#[test]
+fn unlimited_adventures_saves_per_design_in_party_files() {
+    let frua = games::find("unlimited-adventures").unwrap();
+
+    assert_eq!(frua.saves.shape, games::SaveShape::PartyFile);
+    assert_eq!(frua.saves.extension, "CSV");
+    assert!(frua.saves.designs);
+    assert_eq!(frua.saves.party_size_offset, Some(1037));
+    assert_eq!(frua.saves.first_record_offset, Some(1039));
+}
+
+#[test]
+fn pool_of_radiance_saves_one_chrdat_file_per_character() {
+    let por = games::find("pool-of-radiance").unwrap();
+
+    assert_eq!(por.saves.shape, games::SaveShape::Chrdat);
+    assert_eq!(por.saves.extension, "SAV");
+    assert!(!por.saves.designs);
 }
 
 #[test]
@@ -77,7 +109,11 @@ fn an_empty_game_folder_fails_at_load() {
         game = "Broken"
         game_folder = ""
         start = "GO.EXE"
+        machine = "ega"
         record_len = 16
+        [saves]
+        shape = "chrdat"
+        extension = "SAV"
         [dos_config]
         file = "X.CFG"
         path_line = 1
@@ -101,7 +137,11 @@ fn a_zero_config_line_fails_at_load() {
         game = "Broken"
         game_folder = "BROKEN"
         start = "GO.EXE"
+        machine = "ega"
         record_len = 16
+        [saves]
+        shape = "chrdat"
+        extension = "SAV"
         [dos_config]
         file = "X.CFG"
         path_line = 0
@@ -125,7 +165,11 @@ fn a_malformed_record_table_still_fails_at_load() {
         game = "Broken"
         game_folder = "BROKEN"
         start = "GO.EXE"
+        machine = "ega"
         record_len = 4
+        [saves]
+        shape = "chrdat"
+        extension = "SAV"
         [dos_config]
         file = "X.CFG"
         path_line = 1

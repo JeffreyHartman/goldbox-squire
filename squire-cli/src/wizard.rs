@@ -1,10 +1,13 @@
-//! The wizard: game, directory, slot (ADR 0004).
+//! The wizard: game, directory, slot (ADR 0004). Unlimited Adventures gets
+//! one more question between directory and slot: which design (adventure
+//! module), because each design keeps its own saves.
 //!
 //! Three rules keep it unobtrusive. An argument answers its question in
 //! advance and the question is skipped. The game is asked every run (Enter
 //! repeats the last one); the directory is asked only until a game has one;
-//! the slot is asked every run and never remembered (ADR 0002). Back is `0`
-//! everywhere: `b` would collide with save slot B.
+//! the design and the slot are asked every run and never remembered
+//! (ADR 0002): both describe one sitting. Back is `0` everywhere: `b` would
+//! collide with save slot B.
 //!
 //! No raw terminal mode: input is plain lines ended by Enter, which is what
 //! makes the wizard testable without a terminal.
@@ -23,9 +26,10 @@ enum Answer<T> {
     Back,
 }
 
-/// Asks whatever the arguments left unanswered and returns the install key
-/// and the save slot. Records the picks (`last_game`, `chosen`, a typed
-/// directory) in the config; the caller saves it.
+/// Asks whatever the arguments left unanswered and returns the install key,
+/// the save folder (a design's, for a designs game), and the save slot.
+/// Records the picks (`last_game`, `chosen`, a typed directory) in the
+/// config; the caller saves it.
 pub fn choose<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
@@ -33,7 +37,7 @@ pub fn choose<R: BufRead, W: Write>(
     game_arg: Option<&str>,
     game_dir_arg: Option<&str>,
     slot_arg: Option<char>,
-) -> Result<(String, char), String> {
+) -> Result<(String, std::path::PathBuf, char), String> {
     loop {
         let game_id = match game_arg {
             Some(id) => validate_game(id)?,
@@ -59,7 +63,15 @@ pub fn choose<R: BufRead, W: Write>(
         };
 
         let install = &config.installs[&key];
-        let slots = saves::populated_slots(install.save_dir()).map_err(|e| e.to_string())?;
+        let save_dir = if game.saves.designs {
+            match ask_design(input, output, &game, &install.save_dir())? {
+                Answer::Picked(dir) => dir,
+                Answer::Back => continue,
+            }
+        } else {
+            install.save_dir()
+        };
+        let slots = saves::populated_slots(&game, &save_dir).map_err(|e| e.to_string())?;
 
         let slot = match slot_arg {
             Some(letter) => {
@@ -80,7 +92,7 @@ pub fn choose<R: BufRead, W: Write>(
             },
         };
 
-        return Ok((key, slot));
+        return Ok((key, save_dir, slot));
     }
 }
 
@@ -91,9 +103,10 @@ pub fn choose<R: BufRead, W: Write>(
 pub fn repick_slot<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
-    game_dir: &Path,
+    game: &games::Game,
+    save_dir: &Path,
 ) -> Result<Option<(char, Vec<String>)>, String> {
-    let slots = saves::populated_slots(game_dir).map_err(|e| e.to_string())?;
+    let slots = saves::populated_slots(game, save_dir).map_err(|e| e.to_string())?;
     match ask_slot(input, output, &slots)? {
         Answer::Picked(letter) => {
             let names = slots
@@ -125,14 +138,66 @@ fn point_at(config: &mut Config, game: &games::Game, dir: &str) -> Result<String
     if !path.is_dir() {
         return Err(format!("{dir} is not a folder"));
     }
-    let Some(saves) = discover::saves_within(path) else {
+    let Some(saves) = discover::saves_within(path, game) else {
+        let looked_for = if game.saves.designs {
+            format!(
+                "no design with a save file ({{name}}.DSN/SAVE/SAVGAM*.{}) in {dir}",
+                game.saves.extension
+            )
+        } else {
+            let prefix = match game.saves.shape {
+                games::SaveShape::Chrdat => "CHRDAT*",
+                games::SaveShape::PartyFile => "SAVGAM*",
+            };
+            format!(
+                "no {prefix}.{} files in {dir} or one folder inside it",
+                game.saves.extension
+            )
+        };
         return Err(format!(
-            "no CHRDAT*.SAV files in {dir} or one folder inside it. Point at \
-             the game's {} folder, and save the game once inside it first.",
+            "{looked_for}. Point at the game's {} folder, and save the game \
+             once inside it first.",
             game.game_folder
         ));
     };
     Ok(config.choose_manual_dir(&game.id, dir, &saves.to_string_lossy()))
+}
+
+/// The designs question, asked every run for the one game that has them:
+/// which adventure? One entry per design holding a saved game, the one
+/// played most recently first, so Enter continues it.
+fn ask_design<R: BufRead, W: Write>(
+    input: &mut R,
+    output: &mut W,
+    game: &games::Game,
+    game_dir: &Path,
+) -> Result<Answer<std::path::PathBuf>, String> {
+    let designs = saves::designs(game, game_dir).map_err(|e| e.to_string())?;
+
+    let say = |e: &mut W| -> std::io::Result<()> {
+        writeln!(e, "Which adventure?")?;
+        for (n, design) in designs.iter().enumerate() {
+            writeln!(e, "  {}. {}", n + 1, design.name)?;
+        }
+        write!(
+            e,
+            "Press Enter for 1, type a number, or 0 to go back: "
+        )?;
+        e.flush()
+    };
+    say(output).map_err(|e| e.to_string())?;
+
+    loop {
+        match read_choice(input, output, designs.len(), Some(0))? {
+            Choice::Number(n) => return Ok(Answer::Picked(designs[n - 1].save_dir.clone())),
+            Choice::Back => return Ok(Answer::Back),
+            Choice::Other => {
+                write!(output, "Pick a number between 1 and {}: ", designs.len())
+                    .and_then(|_| output.flush())
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+    }
 }
 
 /// Question 1, every run: which game? Every compiled-in game is listed, even

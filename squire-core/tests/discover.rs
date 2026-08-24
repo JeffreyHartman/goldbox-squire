@@ -6,6 +6,15 @@
 use std::path::{Path, PathBuf};
 
 use squire_core::discover::{self, Publisher};
+use squire_core::games;
+
+fn por() -> games::Game {
+    games::find("pool-of-radiance").expect("Pool of Radiance is compiled in")
+}
+
+fn frua() -> games::Game {
+    games::find("unlimited-adventures").expect("Unlimited Adventures is compiled in")
+}
 
 // --- the two real layouts, in miniature -------------------------------------
 
@@ -221,7 +230,7 @@ fn saves_within_finds_chrdat_files_in_the_folder_itself() {
     mkdir(&dir);
     write_save(&dir, "CHRDATA1.SAV", "HERO");
 
-    assert_eq!(discover::saves_within(&dir), Some(PathBuf::new()));
+    assert_eq!(discover::saves_within(&dir, &por()), Some(PathBuf::new()));
 }
 
 #[test]
@@ -232,7 +241,7 @@ fn saves_within_finds_chrdat_files_one_child_down() {
     mkdir(&dir.join("SAVE"));
     write_save(&dir.join("SAVE"), "CHRDATA1.SAV", "HERO");
 
-    assert_eq!(discover::saves_within(&dir), Some(PathBuf::from("SAVE")));
+    assert_eq!(discover::saves_within(&dir, &por()), Some(PathBuf::from("SAVE")));
 }
 
 #[test]
@@ -241,5 +250,55 @@ fn saves_within_is_none_when_there_are_no_saves() {
     let dir = base.join("POOLRAD");
     mkdir(&dir);
 
-    assert_eq!(discover::saves_within(&dir), None);
+    assert_eq!(discover::saves_within(&dir, &por()), None);
+}
+
+// --- Unlimited Adventures: saves per design ----------------------------------
+
+/// An Unlimited Adventures tree the way the user's own copy is laid out: a
+/// conf next to a UA folder, saves per design under `{name}.DSN/SAVE/`.
+fn frua_tree(base: &Path) -> PathBuf {
+    let root = base.join("frua");
+    let save = root.join("UA/BASILISK.DSN/SAVE");
+    mkdir(&save);
+    std::fs::write(save.join("SAVGAMA.CSV"), vec![0u8; 64]).unwrap();
+    std::fs::write(
+        root.join("frua.conf"),
+        "[autoexec]\nmount c .\nc:\ncd UA\nSTART.BAT\n",
+    )
+    .unwrap();
+    root
+}
+
+#[test]
+fn finds_a_frua_tree_and_records_the_game_folder_as_the_save_path() {
+    let base = tempdir();
+    frua_tree(&base);
+
+    let found = discover::discover(std::slice::from_ref(&base));
+
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].game_id, "unlimited-adventures");
+    // The design is chosen later, so the recorded path is the game folder.
+    assert_eq!(found[0].saves, PathBuf::from("UA"));
+}
+
+#[test]
+fn saves_within_accepts_a_frua_game_folder_with_a_design() {
+    let base = tempdir();
+    let root = frua_tree(&base);
+
+    assert_eq!(
+        discover::saves_within(&root.join("UA"), &frua()),
+        Some(PathBuf::new())
+    );
+}
+
+#[test]
+fn saves_within_rejects_a_frua_folder_with_designs_but_no_save_files() {
+    let base = tempdir();
+    let dir = base.join("UA/EMPTY.DSN/SAVE");
+    mkdir(&dir);
+
+    assert_eq!(discover::saves_within(&base.join("UA"), &frua()), None);
 }

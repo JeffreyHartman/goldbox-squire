@@ -1,14 +1,22 @@
 //! Reads the party's names from the game's save files.
 //!
-//! The names are the anchor the scanner searches for. A save file is
-//! `CHRDAT{slot}{index}.SAV`: the save slot is a letter A through J, the
-//! character index is the marching-order position 1 through 6. Only the name
-//! is taken. Every other number is read live from memory, because a save file
-//! goes out of date the moment play continues.
+//! The names are the anchor the scanner searches for. Only the name is taken.
+//! Every other number is read live from memory, because a save file goes out
+//! of date the moment play continues.
+//!
+//! Two shapes exist ([`games::SaveShape`]). Most games write one file per
+//! character, `CHRDAT{slot}{index}.{ext}`: the save slot is a letter A
+//! through J, the character index is the marching-order position 1 through 6.
+//! Unlimited Adventures and The Dark Queen of Krynn write the whole party
+//! into one `SAVGAM{slot}.{ext}` file, and Unlimited Adventures keeps one
+//! save folder per design: `{design}.DSN/SAVE/` inside the game folder.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
+use crate::games::{Game, SaveShape};
+use crate::record;
 use crate::Error;
 
 /// The save slot letters every Gold Box game uses.
@@ -24,26 +32,40 @@ pub struct PopulatedSlot {
     pub names: Vec<String>,
 }
 
+/// One design (adventure module) holding at least one populated save slot.
+/// Only Unlimited Adventures has these.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Design {
+    /// The design's name, `BASILISK` for `BASILISK.DSN`.
+    pub name: String,
+    /// The design's save folder, absolute.
+    pub save_dir: PathBuf,
+    /// When a save file in it last changed. Orders the wizard's list, newest
+    /// first, so Enter picks the design played last.
+    pub modified: SystemTime,
+}
+
 /// The party names of one save slot, in marching order.
 ///
 /// An empty slot is an error that names the populated slots, so the caller can
 /// pass the message straight to the user.
-pub fn slot_party_names(save_dir: impl AsRef<Path>, letter: char) -> Result<Vec<String>, Error> {
+pub fn slot_party_names(
+    game: &Game,
+    save_dir: impl AsRef<Path>,
+    letter: char,
+) -> Result<Vec<String>, Error> {
     let letter = normalize_letter(letter)?;
     let files = save_files(save_dir.as_ref())?;
 
-    let names = read_slot(&files, letter);
+    let names = read_slot(game, &files, letter);
     if names.is_empty() {
         let populated: Vec<String> = SLOT_LETTERS
             .iter()
-            .filter(|l| !read_slot(&files, **l).is_empty())
+            .filter(|l| !read_slot(game, &files, **l).is_empty())
             .map(|l| l.to_string())
             .collect();
         let hint = if populated.is_empty() {
-            format!(
-                "no CHRDAT*.SAV files in {}. Save the game once inside it, then try again",
-                save_dir.as_ref().display()
-            )
+            no_saves_here(game, save_dir.as_ref())
         } else {
             format!(
                 "save slot {letter} is empty. Populated slots: {}",
@@ -55,30 +77,130 @@ pub fn slot_party_names(save_dir: impl AsRef<Path>, letter: char) -> Result<Vec<
     Ok(names)
 }
 
-/// Every populated save slot of a game folder, in letter order.
+/// Every populated save slot of a save folder, in letter order.
 ///
-/// A slot counts as populated when at least one of its `CHRDAT` files parses.
-/// The game's own `SAVGAM{slot}.DAT` is deliberately not required: a slot
-/// missing it still holds readable characters, and refusing it would be
-/// guessing.
-pub fn populated_slots(save_dir: impl AsRef<Path>) -> Result<Vec<PopulatedSlot>, Error> {
+/// A slot counts as populated when at least one character record in it
+/// parses. The game's own bookkeeping files are deliberately not required: a
+/// slot missing them still holds readable characters, and refusing it would
+/// be guessing.
+pub fn populated_slots(game: &Game, save_dir: impl AsRef<Path>) -> Result<Vec<PopulatedSlot>, Error> {
     let files = save_files(save_dir.as_ref())?;
 
     let slots: Vec<PopulatedSlot> = SLOT_LETTERS
         .iter()
         .filter_map(|&letter| {
-            let names = read_slot(&files, letter);
+            let names = read_slot(game, &files, letter);
             (!names.is_empty()).then_some(PopulatedSlot { letter, names })
         })
         .collect();
 
     if slots.is_empty() {
-        return Err(Error::GameFolder(format!(
-            "no CHRDAT*.SAV files in {}. Save the game once inside it, then try again",
-            save_dir.as_ref().display()
-        )));
+        return Err(Error::GameFolder(no_saves_here(game, save_dir.as_ref())));
     }
     Ok(slots)
+}
+
+/// Every design with at least one populated save slot, newest save first.
+///
+/// `game_dir` is the game folder, the one holding the `.DSN` directories.
+/// Only a game whose saves live per design has designs; asking any other game
+/// is a caller bug worded as an error rather than a panic.
+pub fn designs(game: &Game, game_dir: impl AsRef<Path>) -> Result<Vec<Design>, Error> {
+    let game_dir = game_dir.as_ref();
+    if !game.saves.designs {
+        return Err(Error::GameFolder(format!(
+            "{} keeps its saves in one folder, not per design",
+            game.name
+        )));
+    }
+    if !game_dir.is_dir() {
+        return Err(Error::GameFolder(format!(
+            "{} is not a folder",
+            game_dir.display()
+        )));
+    }
+
+    let mut found = Vec::new();
+    let entries = std::fs::read_dir(game_dir)
+        .map_err(|e| Error::GameFolder(format!("cannot list {}: {e}", game_dir.display())))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        let Some(name) = file_name
+            .to_ascii_uppercase()
+            .strip_suffix(".DSN")
+            .map(str::to_owned)
+        else {
+            continue;
+        };
+        let save_dir = match dir_named(&path, "SAVE") {
+            Some(dir) => dir,
+            None => continue,
+        };
+        let Ok(files) = save_files(&save_dir) else {
+            continue;
+        };
+        let populated = SLOT_LETTERS
+            .iter()
+            .any(|&letter| !read_slot(game, &files, letter).is_empty());
+        if !populated {
+            continue;
+        }
+        let modified = newest_save(game, &files);
+        found.push(Design {
+            name,
+            save_dir,
+            modified,
+        });
+    }
+
+    if found.is_empty() {
+        return Err(Error::GameFolder(format!(
+            "no design under {} holds a saved game. Save the game once inside \
+             an adventure, then try again",
+            game_dir.display()
+        )));
+    }
+    // Newest first: the design played last is the one the player most likely
+    // wants, so it becomes the wizard's Enter default.
+    found.sort_by(|a, b| b.modified.cmp(&a.modified).then(a.name.cmp(&b.name)));
+    Ok(found)
+}
+
+/// Whether this folder directly holds any save file of this game's shape.
+pub fn holds_save_files(game: &Game, dir: impl AsRef<Path>) -> bool {
+    let Ok(files) = save_files(dir.as_ref()) else {
+        return false;
+    };
+    let (prefix, ext) = shape_pattern(game);
+    files
+        .keys()
+        .any(|name| name.starts_with(prefix) && name.ends_with(&ext))
+}
+
+/// What "no saves" means for this game's shape, worded for the user.
+fn no_saves_here(game: &Game, dir: &Path) -> String {
+    let (prefix, ext) = shape_pattern(game);
+    format!(
+        "no {}*.{} files in {}. Save the game once inside it, then try again",
+        prefix.to_uppercase(),
+        ext.trim_start_matches('.').to_uppercase(),
+        dir.display()
+    )
+}
+
+/// The lowercased filename prefix and dotted extension of this game's saves.
+fn shape_pattern(game: &Game) -> (&'static str, String) {
+    let ext = format!(".{}", game.saves.extension.to_ascii_lowercase());
+    match game.saves.shape {
+        SaveShape::Chrdat => ("chrdat", ext),
+        SaveShape::PartyFile => ("savgam", ext),
+    }
 }
 
 fn normalize_letter(letter: char) -> Result<char, Error> {
@@ -92,28 +214,115 @@ fn normalize_letter(letter: char) -> Result<char, Error> {
 }
 
 /// One slot's names, in marching order. Empty when the slot is not populated.
-fn read_slot(files: &HashMap<String, PathBuf>, letter: char) -> Vec<String> {
+fn read_slot(game: &Game, files: &HashMap<String, PathBuf>, letter: char) -> Vec<String> {
+    match game.saves.shape {
+        SaveShape::Chrdat => read_chrdat_slot(game, files, letter),
+        SaveShape::PartyFile => read_party_file_slot(game, files, letter),
+    }
+}
+
+/// One slot of the one-file-per-character shape.
+fn read_chrdat_slot(game: &Game, files: &HashMap<String, PathBuf>, letter: char) -> Vec<String> {
+    let ext = game.saves.extension.to_ascii_lowercase();
     let mut names = Vec::new();
     for index in 1..=MAX_CHARACTERS {
-        let key = format!("chrdat{}{index}.sav", letter.to_ascii_lowercase());
+        let key = format!("chrdat{}{index}.{ext}", letter.to_ascii_lowercase());
         let Some(path) = files.get(&key) else {
             continue;
         };
         let Ok(bytes) = std::fs::read(path) else {
             continue;
         };
-        // A file too short to hold a record is not one. The game writes other
-        // CHRDAT files, and a truncated file is not worth failing over.
-        if bytes.len() < 16 {
-            continue;
+        // Only the name is read, through the table, so the games that store
+        // it mid-record work the same as the ones that start with it. A file
+        // too damaged to hold one is skipped, not failed over: the game
+        // writes other files with these names, and one bad file is not worth
+        // losing the slot.
+        if let Some(name) = record::name_at(&game.table, &bytes) {
+            names.push(name);
         }
-        let len = bytes[0] as usize;
-        if len == 0 || len > 15 {
-            continue;
-        }
-        names.push(String::from_utf8_lossy(&bytes[1..1 + len]).into_owned());
     }
     names
+}
+
+/// One slot of the whole-party-in-one-file shape.
+fn read_party_file_slot(
+    game: &Game,
+    files: &HashMap<String, PathBuf>,
+    letter: char,
+) -> Vec<String> {
+    let ext = game.saves.extension.to_ascii_lowercase();
+    let key = format!("savgam{}.{ext}", letter.to_ascii_lowercase());
+    let Some(path) = files.get(&key) else {
+        return Vec::new();
+    };
+    let Ok(bytes) = std::fs::read(path) else {
+        return Vec::new();
+    };
+    party_file_names(game, &bytes)
+}
+
+/// The party's names out of one `SAVGAM` file, in marching order.
+///
+/// The records sit back to back from `first_record_offset`, but each carries
+/// a variable tail of item data whose length the file does not state
+/// reliably. So the walk never computes a stride: it validates at the current
+/// position, and on a miss slides forward one byte. Validation is what keeps
+/// the item bytes from ever reading as a character.
+///
+/// The tail of the file holds stale copies of earlier records, so the walk
+/// stops at the party size when the table knows where that is stored, and
+/// deduplicates by name either way.
+fn party_file_names(game: &Game, bytes: &[u8]) -> Vec<String> {
+    let table = &game.table;
+    let want = match game.saves.party_size_offset {
+        Some(offset) => match bytes.get(offset) {
+            Some(&size) => (size as usize).min(MAX_CHARACTERS),
+            // A file too short to state its party size holds no party.
+            None => return Vec::new(),
+        },
+        None => MAX_CHARACTERS,
+    };
+
+    let mut names = Vec::new();
+    let mut pos = game.saves.first_record_offset.unwrap_or(0);
+    while names.len() < want && pos + table.record_len <= bytes.len() {
+        let candidate = &bytes[pos..pos + table.record_len];
+        if record::validate(table, candidate).is_ok() {
+            if let Some(name) = record::name_at(table, candidate) {
+                if !names.contains(&name) {
+                    names.push(name);
+                }
+            }
+            pos += table.record_len;
+        } else {
+            pos += 1;
+        }
+    }
+    names
+}
+
+/// When any of this game's save files in `files` last changed.
+fn newest_save(game: &Game, files: &HashMap<String, PathBuf>) -> SystemTime {
+    let (prefix, ext) = shape_pattern(game);
+    files
+        .iter()
+        .filter(|(name, _)| name.starts_with(prefix) && name.ends_with(&ext))
+        .filter_map(|(_, path)| path.metadata().ok()?.modified().ok())
+        .max()
+        .unwrap_or(SystemTime::UNIX_EPOCH)
+}
+
+/// A direct child directory with this name, whatever case it is written in.
+fn dir_named(dir: &Path, name: &str) -> Option<PathBuf> {
+    std::fs::read_dir(dir).ok()?.flatten().find_map(|entry| {
+        let path = entry.path();
+        let matches = path
+            .file_name()?
+            .to_str()?
+            .eq_ignore_ascii_case(name);
+        (matches && path.is_dir()).then_some(path)
+    })
 }
 
 /// Every file in the folder, keyed by its lowercased name.

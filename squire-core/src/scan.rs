@@ -41,16 +41,12 @@ pub fn find_records(table: &Table, haystack: &[u8], names: &[String]) -> Vec<Hit
     };
 
     for name in names {
-        // The name field holds fifteen characters. A longer name cannot be in
-        // a record, so searching for it would waste the whole scan.
-        if name.is_empty() || name.len() > name_field.len - 1 {
+        // The needle is the name with its length prefix or terminator, laid
+        // out the way this game's records store it. A name too long for the
+        // field gives no needle, and searching for it would waste the scan.
+        let Some(needle) = record::name_needle(name_field, name) else {
             continue;
-        }
-        // The record starts with a length byte, then the name. Searching for
-        // both together costs nothing and removes most false matches early.
-        let mut needle = Vec::with_capacity(name.len() + 1);
-        needle.push(name.len() as u8);
-        needle.extend_from_slice(name.as_bytes());
+        };
 
         // The name does not always sit at the very start of the record, so the
         // record start is found by stepping back over the name field.

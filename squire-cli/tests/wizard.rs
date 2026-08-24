@@ -7,6 +7,11 @@ use std::path::{Path, PathBuf};
 
 use squire_cli::config::{Config, InstallKind};
 use squire_cli::wizard;
+use squire_core::games;
+
+fn por() -> games::Game {
+    games::find("pool-of-radiance").expect("Pool of Radiance is compiled in")
+}
 
 fn choose(
     input: &str,
@@ -14,7 +19,7 @@ fn choose(
     game: Option<&str>,
     game_dir: Option<&str>,
     slot: Option<char>,
-) -> (Result<(String, char), String>, String) {
+) -> (Result<(String, PathBuf, char), String>, String) {
     let mut output = Vec::new();
     let result = wizard::choose(
         &mut Cursor::new(input.as_bytes()),
@@ -64,8 +69,9 @@ fn a_first_run_asks_game_directory_and_slot() {
 
     let (result, output) = choose("1\n1\nA\n", &mut config, None, None, None);
 
-    let (key, slot) = result.unwrap();
+    let (key, save_dir, slot) = result.unwrap();
     assert_eq!(key, "gog:pool-of-radiance");
+    assert_eq!(save_dir, gog);
     assert_eq!(slot, 'A');
     assert!(output.contains("Which game?"), "got: {output}");
     assert!(output.contains("Where is"), "got: {output}");
@@ -75,7 +81,6 @@ fn a_first_run_asks_game_directory_and_slot() {
         config.chosen.get("pool-of-radiance").map(String::as_str),
         Some("gog:pool-of-radiance")
     );
-    assert_eq!(gog, gog); // silence the unused binding lint plainly
 }
 
 #[test]
@@ -85,7 +90,7 @@ fn a_returning_user_is_two_enters_from_a_running_game() {
 
     let (result, output) = choose("\n\n", &mut config, None, None, None);
 
-    let (key, slot) = result.unwrap();
+    let (key, _, slot) = result.unwrap();
     assert_eq!(key, "gog:pool-of-radiance");
     assert_eq!(slot, 'A');
     assert!(
@@ -112,7 +117,7 @@ fn a_typed_path_becomes_the_chosen_manual_directory() {
     let input = format!("1\n1\n{}\n\n", dir.display());
     let (result, output) = choose(&input, &mut config, None, None, None);
 
-    let (key, _) = result.unwrap();
+    let (key, _, _) = result.unwrap();
     assert_eq!(key, "manual:pool-of-radiance");
     assert_eq!(config.installs[&key].kind, InstallKind::Manual);
     assert_eq!(
@@ -149,7 +154,7 @@ fn game_dir_re_points_the_game_even_when_one_was_chosen() {
         None,
     );
 
-    let (key, slot) = result.unwrap();
+    let (key, _, slot) = result.unwrap();
     assert_eq!(key, "manual:pool-of-radiance");
     assert_eq!(slot, 'J');
     assert_eq!(
@@ -178,7 +183,7 @@ fn naming_the_slot_skips_the_slot_question() {
 
     let (result, output) = choose("\n", &mut config, None, None, Some('B'));
 
-    assert_eq!(result.unwrap().1, 'B');
+    assert_eq!(result.unwrap().2, 'B');
     assert!(!output.contains("Which save slot?"), "got: {output}");
 }
 
@@ -224,7 +229,7 @@ fn slot_b_is_picked_by_typing_b() {
 
     let (result, _) = choose("\nb\n", &mut config, None, None, None);
 
-    assert_eq!(result.unwrap().1, 'B');
+    assert_eq!(result.unwrap().2, 'B');
 }
 
 #[test]
@@ -246,7 +251,7 @@ fn a_lowercase_slot_letter_works() {
 
     let (result, _) = choose("\na\n", &mut config, None, None, None);
 
-    assert_eq!(result.unwrap().1, 'A');
+    assert_eq!(result.unwrap().2, 'A');
 }
 
 #[test]
@@ -256,7 +261,7 @@ fn nonsense_input_re_asks_the_question() {
 
     let (result, output) = choose("\nQ9\nA\n", &mut config, None, None, None);
 
-    assert_eq!(result.unwrap().1, 'A');
+    assert_eq!(result.unwrap().2, 'A');
     assert!(output.contains("Pick one of"), "got: {output}");
 }
 
@@ -270,6 +275,7 @@ fn repicking_returns_the_new_slot_and_its_names() {
     let picked = wizard::repick_slot(
         &mut Cursor::new(b"J\n".as_slice()),
         &mut output,
+        &por(),
         &dir,
     )
     .unwrap();
@@ -287,6 +293,7 @@ fn backing_out_of_a_repick_keeps_the_current_slot() {
     let picked = wizard::repick_slot(
         &mut Cursor::new(b"0\n".as_slice()),
         &mut output,
+        &por(),
         &dir,
     )
     .unwrap();

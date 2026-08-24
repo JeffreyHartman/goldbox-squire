@@ -9,6 +9,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::games;
+use crate::saves;
 
 /// How deep below a search root the walk goes. Both real layouts sit one or
 /// two levels down; four leaves room without crawling a whole disk.
@@ -145,7 +146,7 @@ fn examine(dir: &Path, games: &[games::Game]) -> Vec<DiscoveredInstall> {
 
     let mut found = Vec::new();
     for game in games {
-        let Some(saves) = find_saves(dir, &game.game_folder) else {
+        let Some(saves) = find_saves(dir, game) else {
             continue;
         };
         found.push(DiscoveredInstall {
@@ -201,35 +202,25 @@ fn has_autoexec_mount(text: &str) -> bool {
     false
 }
 
-/// The folder holding `CHRDAT*.SAV` files inside a folder named like the
+/// The folder holding this game's save files inside a folder named like the
 /// game's own DOS folder, relative to the install root.
 ///
 /// GOG keeps the saves in the game folder itself (`data/POOLRAD`). Steam
 /// keeps them one level inside it (`GAME/POOLRAD/SAVE`), so a direct child
-/// holding `CHRDAT` files counts too. Children are tried in sorted order, so
-/// the pick is stable.
-fn find_saves(root: &Path, game_folder: &str) -> Option<PathBuf> {
+/// holding save files counts too. Children are tried in sorted order, so
+/// the pick is stable. A designs game (Unlimited Adventures) keeps one save
+/// folder per design, so its recorded path is the game folder itself and the
+/// design is chosen later.
+fn find_saves(root: &Path, game: &games::Game) -> Option<PathBuf> {
     let mut dirs = Vec::new();
     collect_dirs(root, 0, &mut dirs);
     for dir in dirs {
         let name = dir.file_name()?.to_str()?;
-        if !name.eq_ignore_ascii_case(game_folder) {
+        if !name.eq_ignore_ascii_case(&game.game_folder) {
             continue;
         }
-        if has_chrdat_files(&dir) {
-            return dir.strip_prefix(root).ok().map(Path::to_path_buf);
-        }
-        let mut children: Vec<PathBuf> = std::fs::read_dir(&dir)
-            .ok()?
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.is_dir())
-            .collect();
-        children.sort();
-        for child in children {
-            if has_chrdat_files(&child) {
-                return child.strip_prefix(root).ok().map(Path::to_path_buf);
-            }
+        if let Some(within) = saves_within(&dir, game) {
+            return dir.join(within).strip_prefix(root).ok().map(Path::to_path_buf);
         }
     }
     None
@@ -240,9 +231,14 @@ fn find_saves(root: &Path, game_folder: &str) -> Option<PathBuf> {
 /// means the directory itself. `None` means no save files at all.
 ///
 /// This serves the typed-path flow (ADR 0004): the user points at the game
-/// folder, and this finds the saves the way discovery would.
-pub fn saves_within(dir: &Path) -> Option<PathBuf> {
-    if has_chrdat_files(dir) {
+/// folder, and this finds the saves the way discovery would. For a designs
+/// game the game folder itself is the answer whenever it holds any design
+/// with a save file in it.
+pub fn saves_within(dir: &Path, game: &games::Game) -> Option<PathBuf> {
+    if game.saves.designs {
+        return holds_designs(dir, game).then(PathBuf::new);
+    }
+    if saves::holds_save_files(game, dir) {
         return Some(PathBuf::new());
     }
     let mut children: Vec<PathBuf> = std::fs::read_dir(dir)
@@ -254,17 +250,31 @@ pub fn saves_within(dir: &Path) -> Option<PathBuf> {
     children.sort();
     children
         .into_iter()
-        .find(|child| has_chrdat_files(child))
+        .find(|child| saves::holds_save_files(game, child))
         .and_then(|child| child.file_name().map(PathBuf::from))
 }
 
-fn has_chrdat_files(dir: &Path) -> bool {
+/// Whether `dir` holds at least one design with a save file: a `.DSN` child
+/// with a `SAVE` folder that holds one. Presence of the file is enough here;
+/// whether any slot in it parses is the wizard's design question's job.
+fn holds_designs(dir: &Path, game: &games::Game) -> bool {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return false;
     };
     entries.flatten().any(|e| {
-        let name = e.file_name().to_string_lossy().to_ascii_uppercase();
-        name.starts_with("CHRDAT") && name.ends_with(".SAV")
+        let path = e.path();
+        let is_dsn = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.to_ascii_uppercase().ends_with(".DSN"));
+        is_dsn
+            && path.is_dir()
+            && std::fs::read_dir(&path).ok().is_some_and(|children| {
+                children.flatten().any(|c| {
+                    c.file_name().to_string_lossy().eq_ignore_ascii_case("save")
+                        && saves::holds_save_files(game, c.path())
+                })
+            })
     })
 }
 
