@@ -19,10 +19,12 @@ fn gog_tree(base: &Path) -> PathBuf {
     // script, not the directory listing, decides.
     conf(&root, "dosbox_por_single.conf", false);
     conf(&root, "dosbox_por.conf", true);
+    // The real script names the confs as quoted arguments to a helper, not
+    // as -conf flags. Taken verbatim from a 2024 GOG install.
     std::fs::write(
         root.join("start.sh"),
         "#!/bin/bash\n\
-         dosbox -conf dosbox_por.conf -conf dosbox_por_single.conf -no-console\n",
+         run_dosbox \"dosbox_por.conf\" \"dosbox_por_single.conf\" \"${@}\"\n",
     )
     .unwrap();
     mkdir(&root.join("dosbox"));
@@ -34,8 +36,8 @@ fn gog_tree(base: &Path) -> PathBuf {
 /// `GAME/POOLRAD`, no bundled emulator.
 fn steam_tree(base: &Path) -> PathBuf {
     let root = base.join("Pool of Radiance");
-    mkdir(&root.join("GAME/POOLRAD"));
-    write_save(&root.join("GAME/POOLRAD"), "CHRDATA1.SAV", "HERO");
+    mkdir(&root.join("GAME/POOLRAD/SAVE"));
+    write_save(&root.join("GAME/POOLRAD/SAVE"), "CHRDATA1.SAV", "HERO");
     conf(&root, "game.conf", true);
     conf(&root, "base.conf", false);
     conf(&root, "graphics.conf", false);
@@ -81,7 +83,11 @@ fn finds_a_steam_shaped_tree() {
         vec!["base.conf", "graphics.conf", "game.conf"],
         "conf order comes from run-game.bat"
     );
-    assert_eq!(install.saves, PathBuf::from("GAME/POOLRAD"));
+    assert_eq!(
+        install.saves,
+        PathBuf::from("GAME/POOLRAD/SAVE"),
+        "Steam keeps the save files one level inside POOLRAD"
+    );
 }
 
 #[test]
@@ -211,4 +217,20 @@ fn write_save(dir: &Path, file: &str, name: &str) {
     bytes[0] = name.len() as u8;
     bytes[1..1 + name.len()].copy_from_slice(name.as_bytes());
     std::fs::write(dir.join(file), bytes).unwrap();
+}
+
+#[test]
+fn two_roots_reaching_the_same_install_yield_one_install() {
+    // ~/.steam/steam is a symlink into ~/.local/share/Steam, and both are
+    // search roots, so the same install is reachable twice.
+    let base = tempdir();
+    let real = base.join("real");
+    mkdir(&real);
+    gog_tree(&real);
+    let alias = base.join("alias");
+    std::os::unix::fs::symlink(&real, &alias).unwrap();
+
+    let found = discover::discover(&[alias, real]);
+
+    assert_eq!(found.len(), 1, "{:?}", found);
 }

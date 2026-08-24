@@ -63,7 +63,17 @@ pub fn discover(roots: &[PathBuf]) -> Vec<DiscoveredInstall> {
     let games = games::games();
     let mut found = Vec::new();
 
-    for root in roots {
+    // Two roots can reach the same folder (`~/.steam/steam` is a symlink into
+    // `~/.local/share/Steam`, and both are search roots). Resolving each root
+    // to its real path lets the dedup below collapse them.
+    let mut resolved: Vec<PathBuf> = roots
+        .iter()
+        .filter_map(|root| std::fs::canonicalize(root).ok())
+        .collect();
+    resolved.sort();
+    resolved.dedup();
+
+    for root in &resolved {
         let mut dirs = Vec::new();
         collect_dirs(root, 0, &mut dirs);
         for dir in dirs {
@@ -206,28 +216,36 @@ fn order_confs(dir: &Path, confs: &[(String, bool)]) -> (Vec<String>, Option<Pub
     (ordered, None)
 }
 
-/// The file names following each `-conf` in a launch script, in order.
+/// The conf file names a launch script mentions, in order.
+///
+/// Steam's `run-game.bat` passes each as `-conf name.conf`. GOG's `start.sh`
+/// passes them as quoted arguments to its `run_dosbox` helper, which adds the
+/// `-conf` flags itself. Collecting every token that names a `.conf` file
+/// covers both without knowing either helper.
 fn confs_named_in(script: &str) -> Vec<String> {
-    let mut names = Vec::new();
-    let mut tokens = script.split_whitespace();
-    while let Some(token) = tokens.next() {
-        if token.eq_ignore_ascii_case("-conf") {
-            if let Some(name) = tokens.next() {
-                // Steam's .bat quotes and .\-prefixes its paths.
-                let name = name
-                    .trim_matches('"')
-                    .trim_start_matches(".\\")
-                    .trim_end_matches('\r');
-                let leaf = name.rsplit(['/', '\\']).next().unwrap_or(name);
-                names.push(leaf.to_string());
+    script
+        .split_whitespace()
+        .filter_map(|token| {
+            let name = token
+                .trim_matches('"')
+                .trim_start_matches(".\\")
+                .trim_end_matches('\r');
+            if !name.to_ascii_lowercase().ends_with(".conf") {
+                return None;
             }
-        }
-    }
-    names
+            let leaf = name.rsplit(['/', '\\']).next().unwrap_or(name);
+            Some(leaf.to_string())
+        })
+        .collect()
 }
 
-/// A folder named like the game's save folder holding `CHRDAT*.SAV` files,
-/// relative to the install root.
+/// The folder holding `CHRDAT*.SAV` files inside a folder named like the
+/// game's save folder, relative to the install root.
+///
+/// GOG keeps the saves in the game folder itself (`data/POOLRAD`). Steam
+/// keeps them one level inside it (`GAME/POOLRAD/SAVE`), so a direct child
+/// holding `CHRDAT` files counts too. Children are tried in sorted order, so
+/// the pick is stable.
 fn find_save_folder(root: &Path, folder_name: &str) -> Option<PathBuf> {
     let mut dirs = Vec::new();
     collect_dirs(root, 0, &mut dirs);
@@ -238,6 +256,18 @@ fn find_save_folder(root: &Path, folder_name: &str) -> Option<PathBuf> {
         }
         if has_chrdat_files(&dir) {
             return dir.strip_prefix(root).ok().map(Path::to_path_buf);
+        }
+        let mut children: Vec<PathBuf> = std::fs::read_dir(&dir)
+            .ok()?
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.is_dir())
+            .collect();
+        children.sort();
+        for child in children {
+            if has_chrdat_files(&child) {
+                return child.strip_prefix(root).ok().map(Path::to_path_buf);
+            }
         }
     }
     None
