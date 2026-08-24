@@ -19,12 +19,20 @@ fn a_missing_settings_conf_is_created_from_the_template() {
     assert!(created);
     assert_eq!(path, dir.join("pool-of-radiance.conf"));
     let text = std::fs::read_to_string(&path).unwrap();
-    assert!(text.contains("fullscreen = false"), "got: {text}");
     assert!(text.contains("Pool of Radiance"), "got: {text}");
-    // Sound must work whichever device the install's own DOS config names:
-    // GOG ships PC speaker, Steam ships Tandy.
-    assert!(text.contains("tandy = on"), "got: {text}");
-    assert!(text.contains("compressor = off"), "got: {text}");
+    // The defaults proven in play (ticket 029), plus both sound devices an
+    // install's own DOS config can name: GOG ships PC speaker, Steam Tandy.
+    for setting in [
+        "fullscreen = false",
+        "machine = ega",
+        "pcspeaker = impulse",
+        "pcspeaker_filter = on",
+        "tandy = on",
+        "compressor = off",
+        "mouse_capture = seamless",
+    ] {
+        assert!(text.contains(setting), "missing {setting} in: {text}");
+    }
 }
 
 #[test]

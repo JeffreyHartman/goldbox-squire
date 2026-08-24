@@ -27,21 +27,32 @@ pub fn ensure(config_dir: &Path, game: &Game) -> Result<(PathBuf, bool), String>
          #\n\
          # gbs created this file once and will never change it. It layers on\n\
          # top of your emulator's own default configuration, so only put\n\
-         # settings here that this game should override.\n\
+         # settings here that this game should override. Settings your\n\
+         # emulator does not know are ignored with a warning in its log.\n\
          #\n\
          # The launch commands (mount, start) are not in here: gbs computes\n\
          # them each run from where it found the game.\n\n\
          [sdl]\n\
          fullscreen = false\n\n\
-         # Both sound devices a Gold Box game can name in its own DOS config:\n\
-         # the PC speaker is on by default, and tandy covers installs whose\n\
-         # config names Tandy sound (Steam ships that way).\n\
+         # An EGA-era engine on faithful hardware; the CRT shader then picks\n\
+         # EGA scanline behavior.\n\
+         [dosbox]\n\
+         machine = ega\n\n\
+         # Both sound devices this game can name in its own DOS config: the\n\
+         # PC speaker (impulse is the high-accuracy model), and Tandy for\n\
+         # installs whose config names it (Steam ships that way).\n\
          [speaker]\n\
+         pcspeaker = impulse\n\
+         pcspeaker_filter = on\n\
          tandy = on\n\n\
-         # dosbox-staging's mixer compressor ducks short beeps, which is most\n\
-         # of what these games produce. Other emulators ignore this section.\n\
+         # The mixer compressor ducks short beeps, which is most of what\n\
+         # this game produces.\n\
          [mixer]\n\
-         compressor = off\n",
+         compressor = off\n\n\
+         # The pointer never locks to the window; the game is keyboard-driven.\n\
+         # Middle-click still captures on the day you want it.\n\
+         [mouse]\n\
+         mouse_capture = seamless\n",
         game.name
     );
     std::fs::write(&path, text).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
