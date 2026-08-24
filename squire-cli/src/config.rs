@@ -227,8 +227,10 @@ impl Config {
                     kind,
                     root,
                     saves: d.saves.to_string_lossy().into_owned(),
-                    confs: d.confs,
-                    emulator: d.emulator.map(|p| p.to_string_lossy().into_owned()),
+                    // Since ADR 0003 a discovered install launches gbs's own
+                    // configuration; only manual installs carry these.
+                    confs: Vec::new(),
+                    emulator: None,
                     introduced,
                 },
             );
@@ -285,7 +287,9 @@ impl Config {
     /// pair becomes a manual install, listed and remembered like a discovered
     /// one.
     pub fn remember_manual(&mut self, args: &crate::args::Args) -> bool {
-        if args.game_dir.is_none() && args.conf.is_none() && args.dosbox.is_none() {
+        // --dosbox alone is a one-run override, not an install: only the
+        // flags that describe where a game lives create one.
+        if args.game_dir.is_none() && args.conf.is_none() {
             return false;
         }
         let before = self.clone();

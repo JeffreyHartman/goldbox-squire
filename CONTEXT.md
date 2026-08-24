@@ -10,9 +10,8 @@ configuration and on the command line, a display name, and a character record
 layout. Pool of Radiance is a game.
 
 **Install.** One copy of one game on disk, as a publisher laid it out. An
-install knows which game it holds, where its saves are, which emulator
-configuration files start it, and in what order. Two installs of the same game
-can sit side by side.
+install knows which game it holds and where its saves are. Two installs of the
+same game can sit side by side.
 
 **Install kind.** Who laid the install out. GOG, Steam, found, and manual.
 Found means Squire recognized the shape but no launch script named a publisher.
@@ -31,9 +30,14 @@ numbered 1 through 6. A save slot holds up to six.
 > Slot and character index were one word once, and crossing them was a real bug.
 > "Slot" on its own means the letter. Never use it for the digit.
 
-**Emulator configuration.** The ordered list of configuration files that start
-one install's game. Later files override earlier ones, so the order is part of
-the install, not a detail. GOG ships two. Steam ships three.
+**Settings conf.** The per-game emulator configuration file Squire creates
+once, in its own config folder, and never touches again. It belongs to the
+user. A publisher's own configuration files are never launched; for a manual
+install, the user's named conf takes the settings conf's place.
+
+**Computed autoexec.** The DOS commands that start the game: mount, enter the
+game folder, run the game's start command, exit. Squire computes them each
+launch from where it found the game, so they cannot go stale.
 
 ## The game in memory
 

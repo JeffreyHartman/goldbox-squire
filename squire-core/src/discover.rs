@@ -28,18 +28,10 @@ pub struct DiscoveredInstall {
     pub game_id: String,
     /// Who laid the install out, when a launch script said so.
     pub publisher: Option<Publisher>,
-    /// The folder holding the conf files. The emulator must start here,
-    /// because both publishers' autoexecs use relative mounts.
+    /// The folder the install lives in.
     pub root: PathBuf,
     /// The save folder, relative to `root`.
     pub saves: PathBuf,
-    /// The conf files, relative to `root`, in launch order.
-    pub confs: Vec<String>,
-    /// An emulator binary shipped inside the install. It is the fallback for
-    /// a machine with no `dosbox` on PATH: GOG's bundle is DOSBox 0.74 built
-    /// against libraries current distros no longer ship, so a system dosbox,
-    /// when present, is the one that runs.
-    pub emulator: Option<PathBuf>,
 }
 
 /// The fixed roots discovery always searches, filtered to the ones that exist.
@@ -85,7 +77,39 @@ pub fn discover(roots: &[PathBuf]) -> Vec<DiscoveredInstall> {
 
     found.sort_by(|a, b| a.root.cmp(&b.root).then(a.game_id.cmp(&b.game_id)));
     found.dedup();
-    found
+    dedup_by_game_folder(found)
+}
+
+/// Collapses installs that reach the same game folder into one.
+///
+/// A hand-written conf next to a publisher's folder makes the parent
+/// directory look like a second install of the same game. Since ADR 0003 no
+/// install's confs matter, two roots reaching one game folder are one
+/// install, and the publisher-scripted reading wins over a `found` one.
+fn dedup_by_game_folder(found: Vec<DiscoveredInstall>) -> Vec<DiscoveredInstall> {
+    let mut best: Vec<DiscoveredInstall> = Vec::new();
+    for install in found {
+        let dir = game_folder_identity(&install);
+        match best
+            .iter_mut()
+            .find(|b| b.game_id == install.game_id && game_folder_identity(b) == dir)
+        {
+            Some(existing) => {
+                if existing.publisher.is_none() && install.publisher.is_some() {
+                    *existing = install;
+                }
+            }
+            None => best.push(install),
+        }
+    }
+    best.sort_by(|a, b| a.root.cmp(&b.root).then(a.game_id.cmp(&b.game_id)));
+    best
+}
+
+/// One install's game folder, resolved so two paths to it compare equal.
+fn game_folder_identity(install: &DiscoveredInstall) -> PathBuf {
+    let dir = install.root.join(&install.saves);
+    std::fs::canonicalize(&dir).unwrap_or(dir)
 }
 
 /// Every directory from `dir` down, at most `MAX_DEPTH` levels below the root.
@@ -112,13 +136,10 @@ fn collect_dirs(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
 
 /// Reads one directory as a possible install root.
 fn examine(dir: &Path, games: &[games::Game]) -> Vec<DiscoveredInstall> {
-    let confs = conf_files(dir);
-    if confs.is_empty() {
-        return Vec::new();
-    }
-    // The conf holding [autoexec] with a mount is what makes this a launchable
-    // install rather than a stray settings file.
-    if !confs.iter().any(|(_, has_autoexec)| *has_autoexec) {
+    // A conf holding [autoexec] with a mount is what makes this a game
+    // install rather than a folder with stray save files. The conf itself is
+    // never launched (ADR 0003); it is only the signature.
+    if !has_conf_signature(dir) {
         return Vec::new();
     }
 
@@ -127,39 +148,41 @@ fn examine(dir: &Path, games: &[games::Game]) -> Vec<DiscoveredInstall> {
         let Some(saves) = find_save_folder(dir, &game.save_folder) else {
             continue;
         };
-        let (ordered, publisher) = order_confs(dir, &confs);
         found.push(DiscoveredInstall {
             game_id: game.id.clone(),
-            publisher,
+            publisher: publisher_of(dir),
             root: dir.to_path_buf(),
             saves,
-            confs: ordered,
-            emulator: bundled_emulator(dir),
         });
     }
     found
 }
 
-/// The `.conf` files directly in `dir`, each with whether it holds an
-/// `[autoexec]` mount.
-fn conf_files(dir: &Path) -> Vec<(String, bool)> {
+/// Whether `dir` directly holds a `.conf` file with an `[autoexec]` mount.
+fn has_conf_signature(dir: &Path) -> bool {
     let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
+        return false;
     };
-    let mut confs: Vec<(String, bool)> = entries
-        .flatten()
-        .filter_map(|e| {
-            let path = e.path();
-            let name = path.file_name()?.to_str()?.to_string();
-            if !name.to_ascii_lowercase().ends_with(".conf") || !path.is_file() {
-                return None;
-            }
-            let text = std::fs::read_to_string(&path).unwrap_or_default();
-            Some((name, has_autoexec_mount(&text)))
-        })
-        .collect();
-    confs.sort();
-    confs
+    entries.flatten().any(|e| {
+        let path = e.path();
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            return false;
+        };
+        name.to_ascii_lowercase().ends_with(".conf")
+            && path.is_file()
+            && has_autoexec_mount(&std::fs::read_to_string(&path).unwrap_or_default())
+    })
+}
+
+/// The publisher whose launch script sits in the install root.
+fn publisher_of(dir: &Path) -> Option<Publisher> {
+    if dir.join("start.sh").is_file() {
+        return Some(Publisher::Gog);
+    }
+    if dir.join("run-game.bat").is_file() {
+        return Some(Publisher::Steam);
+    }
+    None
 }
 
 /// Whether a conf's `[autoexec]` section contains a `mount` line.
@@ -176,69 +199,6 @@ fn has_autoexec_mount(text: &str) -> bool {
         }
     }
     false
-}
-
-/// Puts the confs in launch order.
-///
-/// The publisher's launch script is the authority when one is present. When
-/// none is, settings files come first and the one holding `[autoexec]` comes
-/// last, which is the rule both publishers follow.
-fn order_confs(dir: &Path, confs: &[(String, bool)]) -> (Vec<String>, Option<Publisher>) {
-    for (script, publisher) in [
-        ("start.sh", Publisher::Gog),
-        ("run-game.bat", Publisher::Steam),
-    ] {
-        let Ok(text) = std::fs::read_to_string(dir.join(script)) else {
-            continue;
-        };
-        let scripted = confs_named_in(&text);
-        // The script decides the order; the directory decides existence. A
-        // conf the script names but the disk lacks is dropped, and a conf the
-        // script skips is not launched.
-        let ordered: Vec<String> = scripted
-            .into_iter()
-            .filter(|name| confs.iter().any(|(c, _)| c == name))
-            .collect();
-        if !ordered.is_empty() {
-            return (ordered, Some(publisher));
-        }
-    }
-
-    let mut ordered: Vec<String> = confs
-        .iter()
-        .filter(|(_, autoexec)| !autoexec)
-        .map(|(name, _)| name.clone())
-        .collect();
-    ordered.extend(
-        confs
-            .iter()
-            .filter(|(_, autoexec)| *autoexec)
-            .map(|(name, _)| name.clone()),
-    );
-    (ordered, None)
-}
-
-/// The conf file names a launch script mentions, in order.
-///
-/// Steam's `run-game.bat` passes each as `-conf name.conf`. GOG's `start.sh`
-/// passes them as quoted arguments to its `run_dosbox` helper, which adds the
-/// `-conf` flags itself. Collecting every token that names a `.conf` file
-/// covers both without knowing either helper.
-fn confs_named_in(script: &str) -> Vec<String> {
-    script
-        .split_whitespace()
-        .filter_map(|token| {
-            let name = token
-                .trim_matches('"')
-                .trim_start_matches(".\\")
-                .trim_end_matches('\r');
-            if !name.to_ascii_lowercase().ends_with(".conf") {
-                return None;
-            }
-            let leaf = name.rsplit(['/', '\\']).next().unwrap_or(name);
-            Some(leaf.to_string())
-        })
-        .collect()
 }
 
 /// The folder holding `CHRDAT*.SAV` files inside a folder named like the
@@ -285,24 +245,3 @@ fn has_chrdat_files(dir: &Path) -> bool {
     })
 }
 
-/// An executable named `dosbox` shipped inside the install.
-///
-/// GOG ships one, DOSBox 0.74 under `dosbox/`, with a wrapper script of the
-/// same name. Steam ships none on Linux.
-fn bundled_emulator(root: &Path) -> Option<PathBuf> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let mut dirs = Vec::new();
-    collect_dirs(root, 0, &mut dirs);
-    let mut candidates: Vec<PathBuf> = dirs
-        .iter()
-        .filter_map(|dir| {
-            let bin = dir.join("dosbox");
-            let meta = std::fs::metadata(&bin).ok()?;
-            (meta.is_file() && meta.permissions().mode() & 0o111 != 0).then_some(bin)
-        })
-        .collect();
-    // Sorted so the pick is stable when an install somehow holds several.
-    candidates.sort();
-    candidates.into_iter().next()
-}

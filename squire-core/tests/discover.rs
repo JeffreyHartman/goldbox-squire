@@ -60,11 +60,6 @@ fn finds_a_gog_shaped_tree() {
     let install = &found[0];
     assert_eq!(install.game_id, "pool-of-radiance");
     assert_eq!(install.publisher, Some(Publisher::Gog));
-    assert_eq!(
-        install.confs,
-        vec!["dosbox_por.conf", "dosbox_por_single.conf"],
-        "conf order comes from start.sh, not from the directory listing"
-    );
     assert_eq!(install.saves, PathBuf::from("data/POOLRAD"));
 }
 
@@ -79,11 +74,6 @@ fn finds_a_steam_shaped_tree() {
     let install = &found[0];
     assert_eq!(install.publisher, Some(Publisher::Steam));
     assert_eq!(
-        install.confs,
-        vec!["base.conf", "graphics.conf", "game.conf"],
-        "conf order comes from run-game.bat"
-    );
-    assert_eq!(
         install.saves,
         PathBuf::from("GAME/POOLRAD/SAVE"),
         "Steam keeps the save files one level inside POOLRAD"
@@ -91,21 +81,17 @@ fn finds_a_steam_shaped_tree() {
 }
 
 #[test]
-fn a_tree_with_no_launch_script_puts_the_autoexec_conf_last() {
-    // Both publishers follow this rule, so it is the fallback when no script
-    // says otherwise.
+fn a_tree_with_no_launch_script_has_no_publisher() {
     let base = tempdir();
     let root = base.join("por");
     mkdir(&root.join("data/POOLRAD"));
     write_save(&root.join("data/POOLRAD"), "CHRDATA1.SAV", "HERO");
-    conf(&root, "aaa_game.conf", true); // alphabetically first, runs last
-    conf(&root, "zzz_settings.conf", false);
+    conf(&root, "game.conf", true);
 
     let found = discover::discover(std::slice::from_ref(&base));
 
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].publisher, None);
-    assert_eq!(found[0].confs, vec!["zzz_settings.conf", "aaa_game.conf"]);
 }
 
 #[test]
@@ -144,27 +130,20 @@ fn the_scan_stops_four_levels_below_a_root() {
 }
 
 #[test]
-fn a_bundled_emulator_is_recorded() {
+fn a_hand_conf_above_a_publisher_install_collapses_to_the_publisher_one() {
+    // A hand-written conf next to the GOG folder makes the parent directory
+    // look like an install of the same game folder. That is one install,
+    // not two, and the publisher-scripted reading of it wins (ticket 026).
     let base = tempdir();
-    let root = gog_tree(&base);
+    let goldbox = base.join("goldbox");
+    mkdir(&goldbox);
+    gog_tree(&goldbox);
+    conf(&goldbox, "por.conf", true);
 
     let found = discover::discover(std::slice::from_ref(&base));
 
-    assert_eq!(
-        found[0].emulator.as_deref(),
-        Some(root.join("dosbox/dosbox").as_path()),
-        "the fallback for a machine with no system dosbox"
-    );
-}
-
-#[test]
-fn an_install_without_a_bundled_emulator_names_none() {
-    let base = tempdir();
-    steam_tree(&base);
-
-    let found = discover::discover(std::slice::from_ref(&base));
-
-    assert_eq!(found[0].emulator, None, "the system dosbox is all there is");
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].publisher, Some(Publisher::Gog));
 }
 
 #[test]

@@ -11,6 +11,20 @@ use squire_core::games;
 // --- the pair feeds the wizard ----------------------------------------------
 
 #[test]
+fn dosbox_alone_is_a_run_time_override_not_an_install() {
+    // Found while smoke-testing ADR 0003 with a stub emulator: --dosbox with
+    // nothing else used to create a manual install with an empty root, which
+    // then hijacked the wizard and blocked discovery.
+    let args = Args::parse(["--dosbox", "my-dosbox"].iter().map(|s| s.to_string())).unwrap();
+    let mut config = Config::default();
+
+    let changed = config.remember_manual(&args);
+
+    assert!(!changed);
+    assert!(config.installs.is_empty());
+}
+
+#[test]
 fn conf_and_game_dir_become_a_remembered_manual_install() {
     let args = Args::parse(
         ["--conf", "/hand/por.conf", "--game-dir", "/hand/POOLRAD"]

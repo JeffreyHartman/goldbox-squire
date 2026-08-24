@@ -177,8 +177,6 @@ fn discovered(root: &std::path::Path, publisher: Option<Publisher>) -> Discovere
         publisher,
         root: root.to_path_buf(),
         saves: PathBuf::from("data/POOLRAD"),
-        confs: vec!["a.conf".into(), "b.conf".into()],
-        emulator: None,
     }
 }
 
@@ -194,7 +192,8 @@ fn a_discovered_install_is_written_into_the_config() {
     assert_eq!(install.kind, InstallKind::Gog);
     assert_eq!(install.root, root.to_string_lossy());
     assert_eq!(install.saves, "data/POOLRAD");
-    assert_eq!(install.confs, vec!["a.conf", "b.conf"]);
+    assert!(install.confs.is_empty(), "discovered installs carry no confs");
+    assert_eq!(install.emulator, None);
 }
 
 #[test]
