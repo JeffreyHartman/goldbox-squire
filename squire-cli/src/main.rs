@@ -65,13 +65,18 @@ fn run() -> Result<(), String> {
     }
 
     // Find the user's installs, once. A normal run reads the cached results;
-    // the scan reruns only when there are none or a stored root vanished.
-    // Finding nothing is not fatal: the wizard's directory question takes a
-    // typed path.
-    if config.installs.is_empty() || config.needs_rediscovery() {
+    // the scan reruns only when there are none, a stored root vanished, or
+    // this build knows games the last scan did not look for. Finding nothing
+    // is not fatal: the wizard's directory question takes a typed path.
+    let game_ids: Vec<String> = games::games().into_iter().map(|g| g.id).collect();
+    if config.installs.is_empty() || config.needs_rediscovery() || config.known_games != game_ids
+    {
         let mut roots = squire_core::discover::default_roots();
         roots.extend(config.extra_roots.iter().map(PathBuf::from));
-        if config.absorb(squire_core::discover::discover(&roots)) {
+        let absorbed = config.absorb(squire_core::discover::discover(&roots));
+        let registry_grew = config.known_games != game_ids;
+        config.known_games = game_ids;
+        if absorbed || registry_grew {
             if let Err(e) = config.save() {
                 eprintln!("gbs: warning: could not save the settings: {e}");
             }

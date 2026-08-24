@@ -4,16 +4,17 @@
 # from Gold Box Companion v2.65, cross-checked against the game-by-game
 # comparison in `Offsets compared.txt` next to it.
 #
-# UNVERIFIED against a live game: no install of it was on hand when this
-# table was written. The offsets and enums are the documented ones; the
-# game folder and the sixty-minus transform await a real install.
+# Verified against the default-party save files the Steam install on this
+# machine ships: every record decodes to a coherent character, and the
+# sixty-minus armor class and THAC0 read back sane. Not yet verified against
+# live emulator memory.
 #
 # This file describes only the fields that Goldbox Squire reads or validates.
 # The record holds more. Add a field here rather than adding code.
 
 id = "curse-of-the-azure-bonds"
 game = "Curse of the Azure Bonds"
-game_folder = "CURSE"   # unverified
+game_folder = "CURSE"   # verified: the Steam install on this machine
 start = "START.EXE"
 machine = "ega"
 record_len = 422   # offsets 0x000 through 0x1A5
@@ -82,14 +83,14 @@ transform = "sixty_minus"
 name = "race"
 offset = 0x074
 len = 1
-kind = "u8"
+kind = "enum"
 enum = "race"
 
 [[field]]
 name = "class"
 offset = 0x075
 len = 1
-kind = "u8"
+kind = "enum"
 enum = "class"
 
 [[field]]
@@ -216,14 +217,14 @@ kind = "u8"
 name = "gender"
 offset = 0x119
 len = 1
-kind = "u8"
+kind = "enum"
 enum = "gender"
 
 [[field]]
 name = "alignment"
 offset = 0x11B
 len = 1
-kind = "u8"
+kind = "enum"
 enum = "alignment"
 
 [[field]]
@@ -249,7 +250,7 @@ kind = "u8"
 name = "status"
 offset = 0x195
 len = 1
-kind = "u8"
+kind = "enum"
 enum = "status"
 
 [[field]]

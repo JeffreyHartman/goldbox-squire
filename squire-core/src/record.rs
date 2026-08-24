@@ -20,8 +20,8 @@ pub struct Character {
     pub status_raw: u8,
     /// The highest class level. A multi-class character has several.
     pub level: u8,
-    /// Current hit points. The game stores this as a signed byte, so a dying
-    /// character holds a negative value.
+    /// Current hit points. A dying character holds -1 through -10; the byte
+    /// is otherwise unsigned, because high-level hit points pass 127.
     pub hit_points_current: i16,
     pub hit_points_maximum: u8,
     /// Stored as sixty minus the real value, decoded here. Lower is better,
@@ -91,7 +91,7 @@ pub fn decode(table: &Table, bytes: &[u8]) -> Result<Character, Error> {
         status: enum_at(table, bytes, "status"),
         status_raw: u8_at(table, bytes, "status").unwrap_or(0),
         level,
-        hit_points_current: signed_u8_at(table, bytes, "hit_points_current").unwrap_or(0),
+        hit_points_current: hp_at(table, bytes, "hit_points_current").unwrap_or(0),
         hit_points_maximum: u8_at(table, bytes, "hit_points_maximum").unwrap_or(0),
         armor_class: shown_at(table, bytes, "armor_class_current").unwrap_or(0),
         thac0: shown_at(table, bytes, "thac0_current").unwrap_or(0),
@@ -163,7 +163,7 @@ pub fn validate(table: &Table, bytes: &[u8]) -> Result<(), Error> {
     // Hit points. Current may be negative, because a dying character is. It
     // must never exceed the maximum.
     let max = u8_at(table, bytes, "hit_points_maximum").unwrap_or(0);
-    let cur = signed_u8_at(table, bytes, "hit_points_current").unwrap_or(0);
+    let cur = hp_at(table, bytes, "hit_points_current").unwrap_or(0);
     if max == 0 {
         return reject("maximum hit points is zero".into());
     }
@@ -279,8 +279,13 @@ fn u8_at(table: &Table, bytes: &[u8], name: &str) -> Option<u8> {
     bytes.get(f.offset).copied()
 }
 
-fn signed_u8_at(table: &Table, bytes: &[u8], name: &str) -> Option<i16> {
-    u8_at(table, bytes, name).map(|v| v as i8 as i16)
+/// Current hit points as the engine means them. The engine writes a dying
+/// character as -1 through -10 (bytes 0xFF down to 0xF6); every other value
+/// is unsigned, because a high-level character's hit points pass 127. A
+/// plain signed read turned a healthy 135 into -121.
+fn hp_at(table: &Table, bytes: &[u8], name: &str) -> Option<i16> {
+    let raw = u8_at(table, bytes, name)? as i16;
+    Some(if raw >= 0xF6 { raw - 256 } else { raw })
 }
 
 /// Reads one byte and applies the field's transform, when it has one.

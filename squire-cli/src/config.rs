@@ -82,6 +82,11 @@ pub struct Config {
     /// Extra folders install discovery searches.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extra_roots: Vec<String>,
+    /// The game ids the last discovery ran with. A build that adds a game
+    /// changes this list, and that difference is what triggers the rescan
+    /// that can find the new game's installs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub known_games: Vec<String>,
 }
 
 /// Every file version at once. The old keys are read so an existing user's
@@ -104,6 +109,8 @@ struct Raw {
     installs: BTreeMap<String, Install>,
     #[serde(default)]
     extra_roots: Vec<String>,
+    #[serde(default)]
+    known_games: Vec<String>,
 }
 
 impl Config {
@@ -140,6 +147,7 @@ impl Config {
             chosen: raw.chosen,
             installs: raw.installs,
             extra_roots: raw.extra_roots,
+            known_games: raw.known_games,
         };
 
         // v2: the single last choice named both the game and its directory.

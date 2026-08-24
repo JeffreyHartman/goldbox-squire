@@ -133,6 +133,13 @@ impl Table {
                         f.name
                     )));
                 }
+            } else if f.enum_name.is_some() {
+                // A named enumeration on a non-enum field would be silently
+                // ignored by every reader, which is a typo waiting to mislead.
+                return Err(Error::Table(format!(
+                    "field `{}` names an enumeration but is {:?}, not an enum",
+                    f.name, f.kind
+                )));
             }
             if f.transform.is_some() && f.kind != FieldKind::U8 {
                 return Err(Error::Table(format!(

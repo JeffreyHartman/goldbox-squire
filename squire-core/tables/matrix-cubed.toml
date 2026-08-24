@@ -4,16 +4,18 @@
 # from Gold Box Companion v2.65, cross-checked against the game-by-game
 # comparison in `Offsets compared.txt` next to it.
 #
-# UNVERIFIED against a live game: no install of it was on hand when this
-# table was written. The offsets and enums are the documented ones; the
-# game folder and the sixty-minus transform (assumed from the engine family) await a real install.
+# UNVERIFIED: neither Buck Rogers game is sold on GOG or Steam (the license
+# sits with the Dille estate), so no install was on hand. The offsets and
+# enums are the documented ones; the sixty-minus transform is assumed from
+# the engine family. The game folder is community convention, not a
+# publisher's layout: treat the directory as the user's choice.
 #
 # This file describes only the fields that Goldbox Squire reads or validates.
 # The record holds more. Add a field here rather than adding code.
 
 id = "matrix-cubed"
 game = "Matrix Cubed"
-game_folder = "MATRIX"   # unverified
+game_folder = "MATRIX"   # community convention, not a publisher layout
 start = "START.EXE"
 machine = "svga_s3"
 record_len = 259   # offsets 0x000 through 0x102
@@ -76,14 +78,14 @@ transform = "sixty_minus"
 name = "race"
 offset = 0x027
 len = 1
-kind = "u8"
+kind = "enum"
 enum = "race"
 
 [[field]]
 name = "class"
 offset = 0x028
 len = 1
-kind = "u8"
+kind = "enum"
 enum = "class"
 
 [[field]]
@@ -168,7 +170,7 @@ kind = "u8"
 name = "gender"
 offset = 0x026
 len = 1
-kind = "u8"
+kind = "enum"
 enum = "gender"
 
 [[field]]
@@ -188,7 +190,7 @@ kind = "u32le"
 name = "status"
 offset = 0x0D4
 len = 1
-kind = "u8"
+kind = "enum"
 enum = "status"
 
 [[field]]

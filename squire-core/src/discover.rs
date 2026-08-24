@@ -169,9 +169,13 @@ fn has_conf_signature(dir: &Path) -> bool {
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             return false;
         };
+        // Read lossily: SNEG's confs echo CP437 box art, which is not valid
+        // UTF-8, and a strict read would make the whole install invisible.
         name.to_ascii_lowercase().ends_with(".conf")
             && path.is_file()
-            && has_autoexec_mount(&std::fs::read_to_string(&path).unwrap_or_default())
+            && has_autoexec_mount(&String::from_utf8_lossy(
+                &std::fs::read(&path).unwrap_or_default(),
+            ))
     })
 }
 
@@ -219,11 +223,32 @@ fn find_saves(root: &Path, game: &games::Game) -> Option<PathBuf> {
         if !name.eq_ignore_ascii_case(&game.game_folder) {
             continue;
         }
+        // The folder must hold the game, not only its saves. Every sequel
+        // ships a stub of its predecessor for party import — a GATEWAY
+        // folder holding nothing but SAVE inside Treasures — and reporting
+        // that as an install would launch a game that is not there.
+        if !has_file(&dir, &game.start) {
+            continue;
+        }
         if let Some(within) = saves_within(&dir, game) {
             return dir.join(within).strip_prefix(root).ok().map(Path::to_path_buf);
         }
     }
     None
+}
+
+/// Whether `dir` directly holds a file with this name, whatever case its
+/// name is written in.
+fn has_file(dir: &Path, name: &str) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    entries.flatten().any(|e| {
+        e.file_name()
+            .to_str()
+            .is_some_and(|n| n.eq_ignore_ascii_case(name))
+            && e.path().is_file()
+    })
 }
 
 /// Where a game directory keeps its saves: the directory itself, or one

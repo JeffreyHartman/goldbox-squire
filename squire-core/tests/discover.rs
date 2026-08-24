@@ -23,6 +23,7 @@ fn frua() -> games::Game {
 fn gog_tree(base: &Path) -> PathBuf {
     let root = base.join("Pool of Radiance");
     mkdir(&root.join("data/POOLRAD"));
+    std::fs::write(root.join("data/POOLRAD/START.EXE"), b"MZ").unwrap();
     write_save(&root.join("data/POOLRAD"), "CHRDATA1.SAV", "HERO");
     // Alphabetical order and launch order disagree on purpose: the launch
     // script, not the directory listing, decides.
@@ -46,6 +47,7 @@ fn gog_tree(base: &Path) -> PathBuf {
 fn steam_tree(base: &Path) -> PathBuf {
     let root = base.join("Pool of Radiance");
     mkdir(&root.join("GAME/POOLRAD/SAVE"));
+    std::fs::write(root.join("GAME/POOLRAD/START.EXE"), b"MZ").unwrap();
     write_save(&root.join("GAME/POOLRAD/SAVE"), "CHRDATA1.SAV", "HERO");
     conf(&root, "game.conf", true);
     conf(&root, "base.conf", false);
@@ -94,6 +96,7 @@ fn a_tree_with_no_launch_script_has_no_publisher() {
     let base = tempdir();
     let root = base.join("por");
     mkdir(&root.join("data/POOLRAD"));
+    std::fs::write(root.join("data/POOLRAD/START.EXE"), b"MZ").unwrap();
     write_save(&root.join("data/POOLRAD"), "CHRDATA1.SAV", "HERO");
     conf(&root, "game.conf", true);
 
@@ -253,6 +256,28 @@ fn saves_within_is_none_when_there_are_no_saves() {
     assert_eq!(discover::saves_within(&dir, &por()), None);
 }
 
+#[test]
+fn a_predecessors_save_stub_is_not_an_install() {
+    // Every sequel ships a stub of its predecessor for party import:
+    // Treasures holds GAME/GATEWAY/SAVE with save files and nothing else.
+    // A folder with saves but no start file holds no game.
+    let base = tempdir();
+    let root = base.join("Treasures of the Savage Frontier");
+    mkdir(&root.join("GAME/GATEWAY/SAVE"));
+    write_save(&root.join("GAME/GATEWAY/SAVE"), "CHRDATA1.SAV", "STUB");
+    conf(&root, "game.conf", true);
+
+    let found = discover::discover(std::slice::from_ref(&base));
+
+    assert!(found.is_empty(), "{found:?}");
+
+    // The same folder with the game's start file present is an install.
+    std::fs::write(root.join("GAME/GATEWAY/GO.BAT"), b"game\r\n").unwrap();
+    let found = discover::discover(std::slice::from_ref(&base));
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].game_id, "gateway-to-the-savage-frontier");
+}
+
 // --- Unlimited Adventures: saves per design ----------------------------------
 
 /// An Unlimited Adventures tree the way the user's own copy is laid out: a
@@ -261,6 +286,7 @@ fn frua_tree(base: &Path) -> PathBuf {
     let root = base.join("frua");
     let save = root.join("UA/BASILISK.DSN/SAVE");
     mkdir(&save);
+    std::fs::write(root.join("UA/START.BAT"), b"ckit\r\n").unwrap();
     std::fs::write(save.join("SAVGAMA.CSV"), vec![0u8; 64]).unwrap();
     std::fs::write(
         root.join("frua.conf"),
