@@ -77,9 +77,19 @@ fn run() -> Result<(), String> {
         let absorbed = config.absorb(squire_core::discover::discover(&roots));
         // A rescan is the authority on discovered installs, but losing one
         // silently would read as gbs forgetting. Say what was dropped and
-        // how to get it back.
+        // how to get it back. A manual entry collapsed into a rediscovered
+        // install of the same folder was not lost, only renamed, so it does
+        // not count.
         for (key, install) in &remembered {
-            if !config.installs.contains_key(key) {
+            if config.installs.contains_key(key) {
+                continue;
+            }
+            let dir = std::fs::canonicalize(install.save_dir()).unwrap_or(install.save_dir());
+            let still_covered = config.installs.values().any(|other| {
+                other.game == install.game
+                    && std::fs::canonicalize(other.save_dir()).unwrap_or(other.save_dir()) == dir
+            });
+            if !still_covered {
                 eprintln!(
                     "gbs: {} at {} no longer looks like an install and was \
                      dropped from the list. If it is one, point at it again \
@@ -118,9 +128,10 @@ fn run() -> Result<(), String> {
     // No sitting means a fresh install: launch with no party to look for,
     // and the user picks the save mid-watch once it exists.
     let (slot, names) = match &sitting {
-        Some((save_dir, slot)) => (
-            Some(*slot),
-            saves::slot_party_names(&game, save_dir, *slot).map_err(|e| e.to_string())?,
+        Some(sitting) => (
+            Some(sitting.slot),
+            saves::slot_party_names(&game, &sitting.save_dir, sitting.slot)
+                .map_err(|e| e.to_string())?,
         ),
         None => (None, Vec::new()),
     };

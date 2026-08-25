@@ -43,6 +43,24 @@ fn the_remembered_install_fills_in_game_and_folder() {
 }
 
 #[test]
+fn design_on_a_game_without_designs_is_an_error_here_too() {
+    // The wizard path rejects this combination; a script gets the same
+    // contract instead of a silently ignored flag.
+    let dir = saves_dir("design-chrdat", &["CHRDATA1.SAV"]);
+    let args = parse(&[
+        "--pid", "1234",
+        "--game", "pool-of-radiance",
+        "--slot", "A",
+        "--game-dir", dir.to_str().unwrap(),
+        "--design", "BASILISK",
+    ]);
+
+    let err = attach::resolve(&args, &Config::default()).unwrap_err();
+
+    assert!(err.contains("--design"), "got: {err}");
+}
+
+#[test]
 fn a_missing_game_names_the_flag() {
     let args = parse(&["--pid", "1234", "--slot", "A"]);
 

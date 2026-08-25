@@ -70,9 +70,11 @@ pub fn ensure(config_dir: &Path, game: &Game) -> Result<(PathBuf, bool), String>
 pub fn autoexec(install: &Install, game: &Game) -> Result<Vec<String>, String> {
     let mount = mount_dir(install, &game.game_folder).ok_or_else(|| {
         format!(
-            "the install at {} has no `{}` folder in its recorded save path `{}`. \
-             Rerun discovery, or fix the config by hand.",
-            install.root, game.game_folder, install.saves
+            "the install at {} has no folder named `{}`: not in its recorded \
+             save path `{}`, and the root is not named that either. The game \
+             runs inside `{}`, so rename the folder to that, or rerun \
+             discovery.",
+            install.root, game.game_folder, install.saves, game.game_folder
         )
     })?;
     Ok(vec![

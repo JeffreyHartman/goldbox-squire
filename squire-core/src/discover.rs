@@ -233,7 +233,7 @@ fn find_saves(dirs: &[PathBuf], root: &Path, game: &games::Game) -> Option<PathB
         // ships a stub of its predecessor for party import — a GATEWAY
         // folder holding nothing but SAVE inside Treasures — and reporting
         // that as an install would launch a game that is not there.
-        if !has_file(dir, &game.start) {
+        if !holds_the_game(dir, game) {
             continue;
         }
         if let Some(within) = saves_within(dir, game) {
@@ -241,6 +241,15 @@ fn find_saves(dirs: &[PathBuf], root: &Path, game: &games::Game) -> Option<PathB
         }
     }
     None
+}
+
+/// Whether this folder holds the game itself: its start file, directly.
+///
+/// Save files alone do not make a game folder — a sequel's import stub has
+/// them too — and a game folder does not need save files to hold the game:
+/// a fresh install has none yet.
+pub fn holds_the_game(dir: &Path, game: &games::Game) -> bool {
+    has_file(dir, &game.start)
 }
 
 /// Whether `dir` directly holds a file with this name, whatever case its

@@ -14,7 +14,7 @@ fn por() -> games::Game {
 }
 
 /// What choose() hands back: the install key and the optional sitting.
-type Chosen = Result<(String, Option<(PathBuf, char)>), String>;
+type Chosen = Result<(String, Option<wizard::Sitting>), String>;
 
 fn choose(
     input: &str,
@@ -75,10 +75,10 @@ fn a_first_run_asks_game_directory_and_slot() {
     let (result, output) = choose("1\n1\nA\n", &mut config, None, None, None, None);
 
     let (key, sitting) = result.unwrap();
-    let (save_dir, slot) = sitting.expect("a saved game exists");
+    let sitting = sitting.expect("a saved game exists");
     assert_eq!(key, "gog:pool-of-radiance");
-    assert_eq!(save_dir, gog);
-    assert_eq!(slot, 'A');
+    assert_eq!(sitting.save_dir, gog);
+    assert_eq!(sitting.slot, 'A');
     assert!(output.contains("Which game?"), "got: {output}");
     assert!(output.contains("Where is"), "got: {output}");
     assert!(output.contains("Which save slot?"), "got: {output}");
@@ -98,7 +98,7 @@ fn a_returning_user_is_two_enters_from_a_running_game() {
 
     let (key, sitting) = result.unwrap();
     assert_eq!(key, "gog:pool-of-radiance");
-    assert_eq!(sitting.unwrap().1, 'A');
+    assert_eq!(sitting.unwrap().slot, 'A');
     assert!(
         !output.contains("Where is"),
         "a chosen directory skips the question: {output}"
@@ -163,7 +163,7 @@ fn game_dir_re_points_the_game_even_when_one_was_chosen() {
 
     let (key, sitting) = result.unwrap();
     assert_eq!(key, "manual:pool-of-radiance");
-    assert_eq!(sitting.unwrap().1, 'J');
+    assert_eq!(sitting.unwrap().slot, 'J');
     assert_eq!(
         config.chosen.get("pool-of-radiance").map(String::as_str),
         Some("manual:pool-of-radiance")
@@ -190,7 +190,7 @@ fn naming_the_slot_skips_the_slot_question() {
 
     let (result, output) = choose("\n", &mut config, None, None, None, Some('B'));
 
-    assert_eq!(result.unwrap().1.unwrap().1, 'B');
+    assert_eq!(result.unwrap().1.unwrap().slot, 'B');
     assert!(!output.contains("Which save slot?"), "got: {output}");
 }
 
@@ -236,7 +236,7 @@ fn slot_b_is_picked_by_typing_b() {
 
     let (result, _) = choose("\nb\n", &mut config, None, None, None, None);
 
-    assert_eq!(result.unwrap().1.unwrap().1, 'B');
+    assert_eq!(result.unwrap().1.unwrap().slot, 'B');
 }
 
 #[test]
@@ -258,7 +258,7 @@ fn a_lowercase_slot_letter_works() {
 
     let (result, _) = choose("\na\n", &mut config, None, None, None, None);
 
-    assert_eq!(result.unwrap().1.unwrap().1, 'A');
+    assert_eq!(result.unwrap().1.unwrap().slot, 'A');
 }
 
 #[test]
@@ -268,7 +268,7 @@ fn nonsense_input_re_asks_the_question() {
 
     let (result, output) = choose("\nQ9\nA\n", &mut config, None, None, None, None);
 
-    assert_eq!(result.unwrap().1.unwrap().1, 'A');
+    assert_eq!(result.unwrap().1.unwrap().slot, 'A');
     assert!(output.contains("Pick one of"), "got: {output}");
 }
 
@@ -323,10 +323,10 @@ fn a_designs_game_asks_which_adventure() {
     let (result, output) = choose("1\nA\n", &mut config, Some("unlimited-adventures"), None, None, None);
 
     let (_, sitting) = result.unwrap();
-    let (save_dir, slot) = sitting.expect("a saved game exists");
+    let sitting = sitting.expect("a saved game exists");
     assert!(output.contains("Which adventure?"), "got: {output}");
-    assert_eq!(save_dir, root.join("BASILISK.DSN/SAVE"));
-    assert_eq!(slot, 'A');
+    assert_eq!(sitting.save_dir, root.join("BASILISK.DSN/SAVE"));
+    assert_eq!(sitting.slot, 'A');
 }
 
 #[test]
@@ -344,7 +344,7 @@ fn naming_the_design_skips_the_adventure_question() {
 
     let (_, sitting) = result.unwrap();
     assert!(!output.contains("Which adventure?"), "got: {output}");
-    assert_eq!(sitting.unwrap().0, root.join("TUTORIAL.DSN/SAVE"));
+    assert_eq!(sitting.unwrap().save_dir, root.join("TUTORIAL.DSN/SAVE"));
 }
 
 #[test]
@@ -384,11 +384,9 @@ fn design_on_a_game_without_designs_is_an_error() {
 
 // --- the fresh-install escape --------------------------------------------------------
 
-#[test]
-fn a_fresh_frua_install_offers_to_launch_anyway() {
-    // A fresh install ships designs with zero-filled save files. gbs is the
-    // launcher, so refusing to run would make the first save impossible.
-    let (mut config, root) = frua_config("fresh");
+/// Overwrites both designs' save files with the zero-filled file a fresh
+/// install ships: designs exist, no saved game does.
+fn blank_the_designs(root: &Path) {
     for design in ["BASILISK", "TUTORIAL"] {
         std::fs::write(
             root.join(format!("{design}.DSN/SAVE/SAVGAMA.CSV")),
@@ -396,6 +394,14 @@ fn a_fresh_frua_install_offers_to_launch_anyway() {
         )
         .unwrap();
     }
+}
+
+#[test]
+fn a_fresh_frua_install_offers_to_launch_anyway() {
+    // A fresh install ships designs with zero-filled save files. gbs is the
+    // launcher, so refusing to run would make the first save impossible.
+    let (mut config, root) = frua_config("fresh");
+    blank_the_designs(&root);
 
     let (result, output) = choose("\n", &mut config, Some("unlimited-adventures"), None, None, None);
 
@@ -407,13 +413,7 @@ fn a_fresh_frua_install_offers_to_launch_anyway() {
 #[test]
 fn zero_at_the_launch_anyway_question_goes_back() {
     let (mut config, root) = frua_config("fresh-back");
-    for design in ["BASILISK", "TUTORIAL"] {
-        std::fs::write(
-            root.join(format!("{design}.DSN/SAVE/SAVGAMA.CSV")),
-            vec![0u8; 10285],
-        )
-        .unwrap();
-    }
+    blank_the_designs(&root);
 
     // Pick the game (12), answer 0 at launch-anyway; the input then ends,
     // which is an error, proving the wizard asked again rather than launching.
@@ -466,6 +466,51 @@ fn an_explicit_slot_on_a_fresh_install_stays_a_hard_error() {
     let (result, _) = choose("", &mut config, Some("pool-of-radiance"), None, None, Some('A'));
 
     assert!(result.is_err());
+}
+
+#[test]
+fn a_typed_path_to_a_fresh_game_folder_is_accepted_and_offers_to_launch() {
+    // The folder holds the game (START.EXE) but no save yet. Refusing it
+    // would make the first save impossible, since gbs is the launcher.
+    let dir = saves_dir("typed-fresh", &[]);
+    std::fs::write(dir.join("START.EXE"), b"MZ").unwrap();
+    let mut config = Config::default();
+
+    let (result, output) = choose(
+        "\n",
+        &mut config,
+        Some("pool-of-radiance"),
+        Some(dir.to_str().unwrap()),
+        None,
+        None,
+    );
+
+    let (key, sitting) = result.unwrap();
+    assert_eq!(key, "manual:pool-of-radiance");
+    assert!(sitting.is_none());
+    assert!(output.contains("Start the game anyway?"), "got: {output}");
+}
+
+#[test]
+fn a_repick_finds_the_first_save_written_into_a_child_folder() {
+    // Launched fresh, the game wrote its first save into a SAVE child; the
+    // mid-watch Enter must find it without a restart.
+    let dir = saves_dir("repick-child", &[]);
+    std::fs::create_dir_all(dir.join("SAVE")).unwrap();
+    write_save(&dir.join("SAVE"), "CHRDATA1.SAV", "NEWBORN");
+    let mut output = Vec::new();
+
+    let picked = wizard::repick(
+        &mut Cursor::new(b"A\n".as_slice()),
+        &mut output,
+        &por(),
+        &dir,
+    )
+    .unwrap();
+
+    let (slot, names) = picked.expect("the save was found");
+    assert_eq!(slot, 'A');
+    assert_eq!(names, vec!["NEWBORN"]);
 }
 
 // --- repicking mid-watch -----------------------------------------------------------

@@ -184,6 +184,29 @@ pub fn designs(game: &Game, game_dir: impl AsRef<Path>) -> Result<Vec<Design>, E
     Ok(found)
 }
 
+/// The design with this name, matched case-insensitively, among the designs
+/// holding a saved game. The error names the ones that do, so a typo's
+/// message is also the answer.
+pub fn design_named(
+    game: &Game,
+    game_dir: impl AsRef<Path>,
+    name: &str,
+) -> Result<Design, Error> {
+    let designs = designs(game, game_dir)?;
+    designs
+        .iter()
+        .find(|d| d.name.eq_ignore_ascii_case(name))
+        .cloned()
+        .ok_or_else(|| {
+            let known: Vec<&str> = designs.iter().map(|d| d.name.as_str()).collect();
+            Error::GameFolder(format!(
+                "no design named `{name}` holds a saved game. Designs with \
+                 saves: {}",
+                known.join(", ")
+            ))
+        })
+}
+
 /// Whether this folder directly holds any save file of this game's shape.
 pub fn holds_save_files(game: &Game, dir: impl AsRef<Path>) -> bool {
     let Ok(files) = save_files(dir.as_ref()) else {

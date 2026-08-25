@@ -13,11 +13,11 @@
 //! makes the wizard testable without a terminal.
 
 use std::io::{BufRead, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use squire_core::{discover, games, saves};
 
-use crate::config::Config;
+use crate::config::{Config, InstallKind};
 
 /// What one question came back with.
 enum Answer<T> {
@@ -26,12 +26,27 @@ enum Answer<T> {
     Back,
 }
 
+/// One sitting: what the wizard resolves beyond the install. The save folder
+/// is a design's for a designs game.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Sitting {
+    pub save_dir: PathBuf,
+    pub slot: char,
+}
+
+/// What the fresh-install escape decided.
+enum Escape {
+    /// Start the game with no sitting; the save is picked mid-watch.
+    Launch,
+    /// Back to the game question.
+    Back,
+}
+
 /// Asks whatever the arguments left unanswered and returns the install key
-/// and the sitting: the save folder (a design's, for a designs game) and the
-/// save slot. `None` for the sitting means no saved game exists yet and the
-/// user chose to launch anyway; the party is picked mid-watch after the
-/// first in-game save. Records the picks (`last_game`, `chosen`, a typed
-/// directory) in the config; the caller saves it.
+/// and the sitting. `None` for the sitting means no saved game exists yet
+/// and the user chose to launch anyway; the sitting is picked mid-watch
+/// after the first in-game save. Records the picks (`last_game`, `chosen`,
+/// a typed directory) in the config; the caller saves it.
 pub fn choose<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
@@ -40,7 +55,7 @@ pub fn choose<R: BufRead, W: Write>(
     game_dir_arg: Option<&str>,
     design_arg: Option<&str>,
     slot_arg: Option<char>,
-) -> Result<(String, Option<(std::path::PathBuf, char)>), String> {
+) -> Result<(String, Option<Sitting>), String> {
     loop {
         let game_id = match game_arg {
             Some(id) => validate_game(id)?,
@@ -65,28 +80,29 @@ pub fn choose<R: BufRead, W: Write>(
             },
         };
 
-        let install = &config.installs[&key];
+        // A manual install recorded before its first save may since have
+        // saved into a child folder; look again before trusting the record.
+        refresh_manual_saves(config, &key, &game);
+        let install_save_dir = config.installs[&key].save_dir();
+
         let save_dir = if game.saves.designs {
             match design_arg {
                 // An explicit --design that cannot be honored is an error:
                 // a script must not silently launch without its party.
-                Some(name) => named_design(&game, &install.save_dir(), name)?,
-                None => match saves::designs(&game, install.save_dir()) {
+                Some(name) => saves::design_named(&game, &install_save_dir, name)
+                    .map(|d| d.save_dir)
+                    .map_err(|e| e.to_string())?,
+                None => match saves::designs(&game, &install_save_dir) {
                     Ok(designs) => match ask_design(input, output, &designs)? {
                         Answer::Picked(dir) => dir,
                         Answer::Back => continue,
                     },
                     // A fresh install has designs but no saved game in any.
-                    // gbs is the launcher, so refusing here would leave no
-                    // way to ever create that first save.
                     Err(reason) => {
-                        if slot_arg.is_some() {
-                            return Err(reason.to_string());
+                        match no_saves_escape(input, output, slot_arg, &reason.to_string())? {
+                            Escape::Launch => return Ok((key, None)),
+                            Escape::Back => continue,
                         }
-                        if launch_anyway(input, output, &reason.to_string())? {
-                            return Ok((key, None));
-                        }
-                        continue;
                     }
                 },
             }
@@ -97,21 +113,15 @@ pub fn choose<R: BufRead, W: Write>(
                 game.name
             ));
         } else {
-            install.save_dir()
+            install_save_dir
         };
         let slots = match saves::populated_slots(&game, &save_dir) {
             Ok(slots) => slots,
-            Err(reason) => {
-                // Same fresh-install escape as above, chrdat shape. An
-                // explicit --slot stays a hard error.
-                if slot_arg.is_some() {
-                    return Err(reason.to_string());
-                }
-                if launch_anyway(input, output, &reason.to_string())? {
-                    return Ok((key, None));
-                }
-                continue;
-            }
+            // The fresh-install escape, chrdat shape.
+            Err(reason) => match no_saves_escape(input, output, slot_arg, &reason.to_string())? {
+                Escape::Launch => return Ok((key, None)),
+                Escape::Back => continue,
+            },
         };
 
         let slot = match slot_arg {
@@ -133,7 +143,52 @@ pub fn choose<R: BufRead, W: Write>(
             },
         };
 
-        return Ok((key, Some((save_dir, slot))));
+        return Ok((key, Some(Sitting { save_dir, slot })));
+    }
+}
+
+/// The shared fresh-install decision: no saved game was found. An explicit
+/// `--slot` makes the reason a hard error, because a script that named a
+/// slot must not silently run without it. Otherwise the user decides:
+/// launch without a sitting, or go back. gbs is the launcher, so refusing
+/// outright would leave no way to ever create the first save.
+fn no_saves_escape<R: BufRead, W: Write>(
+    input: &mut R,
+    output: &mut W,
+    slot_arg: Option<char>,
+    reason: &str,
+) -> Result<Escape, String> {
+    if slot_arg.is_some() {
+        return Err(reason.to_string());
+    }
+    if launch_anyway(input, output, reason)? {
+        Ok(Escape::Launch)
+    } else {
+        Ok(Escape::Back)
+    }
+}
+
+/// Re-derives a manual install's save folder the way the typed path would
+/// find it today, and records the correction. A manual install accepted
+/// before its first save has an empty save path, and the game may then
+/// write its saves into a child folder (Steam-shaped games nest `SAVE`).
+fn refresh_manual_saves(config: &mut Config, key: &str, game: &games::Game) {
+    let Some(install) = config.installs.get(key) else {
+        return;
+    };
+    if install.kind != InstallKind::Manual || game.saves.designs {
+        return;
+    }
+    if saves::holds_save_files(game, install.save_dir()) {
+        return;
+    }
+    let root = install.root.clone();
+    let Some(rel) = discover::saves_within(Path::new(&root), game) else {
+        return;
+    };
+    let rel = rel.to_string_lossy().into_owned();
+    if rel != install.saves {
+        config.choose_manual_dir(&game.id, &root, &rel);
     }
 }
 
@@ -166,8 +221,8 @@ fn launch_anyway<R: BufRead, W: Write>(
 }
 
 /// Re-asks the sitting mid-watch: the design first for a designs game, then
-/// the slot. `game_dir` is the install's save folder, the game folder itself
-/// for a designs game.
+/// the slot. `install_save_dir` is the install's save folder, which for a
+/// designs game is the game folder itself.
 ///
 /// Returns the new slot and its party names, or `None` to keep watching what
 /// was already chosen. Finding no saved game is also `None`, with the reason
@@ -177,10 +232,10 @@ pub fn repick<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
     game: &games::Game,
-    game_dir: &Path,
+    install_save_dir: &Path,
 ) -> Result<Option<(char, Vec<String>)>, String> {
     let save_dir = if game.saves.designs {
-        match saves::designs(game, game_dir) {
+        match saves::designs(game, install_save_dir) {
             Ok(designs) => match ask_design(input, output, &designs)? {
                 Answer::Picked(dir) => dir,
                 Answer::Back => return Ok(None),
@@ -191,13 +246,26 @@ pub fn repick<R: BufRead, W: Write>(
             }
         }
     } else {
-        game_dir.to_path_buf()
+        install_save_dir.to_path_buf()
     };
     let slots = match saves::populated_slots(game, &save_dir) {
         Ok(slots) => slots,
         Err(reason) => {
-            writeln!(output, "{reason}.").map_err(|e| e.to_string())?;
-            return Ok(None);
+            // A fresh install launched without a sitting may have written
+            // its first save into a child folder just now (Steam-shaped
+            // games nest SAVE); look once more before giving up.
+            let retry = (!game.saves.designs)
+                .then(|| discover::saves_within(&save_dir, game))
+                .flatten()
+                .filter(|rel| !rel.as_os_str().is_empty())
+                .and_then(|rel| saves::populated_slots(game, save_dir.join(rel)).ok());
+            match retry {
+                Some(slots) => slots,
+                None => {
+                    writeln!(output, "{reason}.").map_err(|e| e.to_string())?;
+                    return Ok(None);
+                }
+            }
         }
     };
     match ask_slot(input, output, &slots)? {
@@ -226,12 +294,19 @@ fn validate_game(id: &str) -> Result<String, String> {
 }
 
 /// Records a user-named game directory after checking it holds the game.
+///
+/// Save files prove it the usual way. A folder holding the game's start
+/// file but no saves is a fresh install and is accepted too: gbs is the
+/// launcher, so the first save can only ever come from launching it.
 fn point_at(config: &mut Config, game: &games::Game, dir: &str) -> Result<String, String> {
     let path = Path::new(dir);
     if !path.is_dir() {
         return Err(format!("{dir} is not a folder"));
     }
     let Some(saves) = discover::saves_within(path, game) else {
+        if discover::holds_the_game(path, game) {
+            return Ok(config.choose_manual_dir(&game.id, dir, ""));
+        }
         let looked_for = if game.saves.designs {
             format!(
                 "no design with a save file ({{name}}.DSN/SAVE/SAVGAM*.{}) in {dir}",
@@ -248,33 +323,11 @@ fn point_at(config: &mut Config, game: &games::Game, dir: &str) -> Result<String
             )
         };
         return Err(format!(
-            "{looked_for}. Point at the game's {} folder, and save the game \
-             once inside it first.",
-            game.game_folder
+            "{looked_for}, and no {} either. Point at the game's {} folder.",
+            game.start, game.game_folder
         ));
     };
     Ok(config.choose_manual_dir(&game.id, dir, &saves.to_string_lossy()))
-}
-
-/// Resolves `--design` to a design's save folder, by name, any case.
-fn named_design(
-    game: &games::Game,
-    game_dir: &Path,
-    name: &str,
-) -> Result<std::path::PathBuf, String> {
-    let designs = saves::designs(game, game_dir).map_err(|e| e.to_string())?;
-    designs
-        .iter()
-        .find(|d| d.name.eq_ignore_ascii_case(name))
-        .map(|d| d.save_dir.clone())
-        .ok_or_else(|| {
-            let known: Vec<&str> = designs.iter().map(|d| d.name.as_str()).collect();
-            format!(
-                "no design named `{name}` holds a saved game. Designs with \
-                 saves: {}",
-                known.join(", ")
-            )
-        })
 }
 
 /// The designs question, asked every run for the one game that has them:

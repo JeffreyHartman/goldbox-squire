@@ -87,29 +87,39 @@ pub fn resolve(args: &Args, config: &Config) -> Result<Resolved, String> {
 /// asking. A folder already holding save files passes through, `--design`
 /// names one, one lone design with a saved game is the only possible answer,
 /// and anything else is an error naming the candidates.
+///
+/// An explicit `--design` that cannot be honored is always an error, never
+/// silently ignored: the wizard path treats it that way, and a script must
+/// get the same contract here.
 fn resolve_design(
     game: &games::Game,
     dir: PathBuf,
     named: Option<&str>,
 ) -> Result<PathBuf, String> {
+    if let Some(name) = named {
+        if !game.saves.designs {
+            return Err(format!(
+                "--design means nothing to {}: only Unlimited Adventures keeps \
+                 saves per design (got `{name}`)",
+                game.name
+            ));
+        }
+        if saves::holds_save_files(game, &dir) {
+            return Err(format!(
+                "the folder already is one design's save folder, so --design \
+                 `{name}` cannot choose another. Drop --design, or point \
+                 --game-dir at the {} folder.",
+                game.game_folder
+            ));
+        }
+        return saves::design_named(game, &dir, name)
+            .map(|d| d.save_dir)
+            .map_err(|e| e.to_string());
+    }
     if !game.saves.designs || saves::holds_save_files(game, &dir) {
         return Ok(dir);
     }
     let designs = saves::designs(game, &dir).map_err(|e| e.to_string())?;
-    if let Some(name) = named {
-        return designs
-            .iter()
-            .find(|d| d.name.eq_ignore_ascii_case(name))
-            .map(|d| d.save_dir.clone())
-            .ok_or_else(|| {
-                let known: Vec<&str> = designs.iter().map(|d| d.name.as_str()).collect();
-                format!(
-                    "no design named `{name}` holds a saved game. Designs \
-                     with saves: {}",
-                    known.join(", ")
-                )
-            });
-    }
     if let [only] = designs.as_slice() {
         return Ok(only.save_dir.clone());
     }
