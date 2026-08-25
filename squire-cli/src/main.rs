@@ -58,7 +58,7 @@ fn run() -> Result<(), String> {
             &args,
             &game,
             None,
-            resolved.slot,
+            Some(resolved.slot),
             resolved.names,
             None,
         );
@@ -73,7 +73,21 @@ fn run() -> Result<(), String> {
     {
         let mut roots = squire_core::discover::default_roots();
         roots.extend(config.extra_roots.iter().map(PathBuf::from));
+        let remembered = config.installs.clone();
         let absorbed = config.absorb(squire_core::discover::discover(&roots));
+        // A rescan is the authority on discovered installs, but losing one
+        // silently would read as gbs forgetting. Say what was dropped and
+        // how to get it back.
+        for (key, install) in &remembered {
+            if !config.installs.contains_key(key) {
+                eprintln!(
+                    "gbs: {} at {} no longer looks like an install and was \
+                     dropped from the list. If it is one, point at it again \
+                     with --game-dir.",
+                    install.game, install.root
+                );
+            }
+        }
         let registry_grew = config.known_games != game_ids;
         config.known_games = game_ids;
         if absorbed || registry_grew {
@@ -84,12 +98,13 @@ fn run() -> Result<(), String> {
     }
 
     let before = config.clone();
-    let (key, save_dir, slot) = wizard::choose(
+    let (key, sitting) = wizard::choose(
         &mut std::io::stdin().lock(),
         &mut std::io::stderr(),
         &mut config,
         args.game.as_deref(),
         args.game_dir.as_deref(),
+        args.design.as_deref(),
         args.slot,
     )?;
     if config != before {
@@ -100,7 +115,15 @@ fn run() -> Result<(), String> {
     let install = config.installs[&key].clone();
     let game = games::find(&install.game)
         .ok_or_else(|| format!("unknown game `{}` in the config", install.game))?;
-    let names = saves::slot_party_names(&game, &save_dir, slot).map_err(|e| e.to_string())?;
+    // No sitting means a fresh install: launch with no party to look for,
+    // and the user picks the save mid-watch once it exists.
+    let (slot, names) = match &sitting {
+        Some((save_dir, slot)) => (
+            Some(*slot),
+            saves::slot_party_names(&game, save_dir, *slot).map_err(|e| e.to_string())?,
+        ),
+        None => (None, Vec::new()),
+    };
     let table = game.table.clone();
 
     // A hand-named folder can disagree with where the game's own DOS config
@@ -138,6 +161,10 @@ fn run() -> Result<(), String> {
     );
 
     let mut session = Session::new(running.reader(), table, names.clone());
+    // The repick folder is the install's own save folder: for a designs game
+    // that is the game folder, and repicking asks the design again, so a
+    // fresh install's first save is reachable mid-watch.
+    let repick_dir = install.save_dir();
     watch(
         &mut session,
         &args,
@@ -145,7 +172,7 @@ fn run() -> Result<(), String> {
         Some(&mut running),
         slot,
         names,
-        Some(&save_dir),
+        Some(&repick_dir),
     )
 }
 
@@ -185,7 +212,7 @@ fn watch<R: squire_core::mem::Reader>(
     args: &Args,
     game: &games::Game,
     mut running: Option<&mut Launched>,
-    mut slot: char,
+    mut slot: Option<char>,
     mut names: Vec<String>,
     save_dir: Option<&Path>,
 ) -> Result<(), String> {
@@ -195,7 +222,13 @@ fn watch<R: squire_core::mem::Reader>(
     // Once stdin hits end of file (a closed pipe), there is no keyboard to
     // listen to, and polling a fd at EOF would spin.
     let mut stdin_open = save_dir.is_some();
-    eprintln!("gbs: waiting for the party of save slot {slot} to load...");
+    match slot {
+        Some(letter) => eprintln!("gbs: waiting for the party of save slot {letter} to load..."),
+        None => eprintln!(
+            "gbs: no saved game yet. Play on; after you save in game, press \
+             Enter here to pick it."
+        ),
+    }
 
     loop {
         if let Some(r) = running.as_deref_mut() {
@@ -210,15 +243,18 @@ fn watch<R: squire_core::mem::Reader>(
                 if party.state == PartyState::NotFound && !found_once {
                     // Still waiting: the game is booting or sits in a menu.
                     // After a while, the missing party may mean a wrong pick,
-                    // so name the assumption instead of hunting forever.
-                    if !hinted && searching_since.elapsed() >= HINT_AFTER {
-                        eprintln!(
-                            "gbs: still looking for save slot {slot}'s party ({}). \
-                             If another save is loaded, press Enter to choose a \
-                             different slot.",
-                            names.join(", ")
-                        );
-                        hinted = true;
+                    // so name the assumption instead of hunting forever. With
+                    // no slot chosen there is no assumption to name.
+                    if let Some(letter) = slot {
+                        if !hinted && searching_since.elapsed() >= HINT_AFTER {
+                            eprintln!(
+                                "gbs: still looking for save slot {letter}'s party ({}). \
+                                 If another save is loaded, press Enter to choose a \
+                                 different slot.",
+                                names.join(", ")
+                            );
+                            hinted = true;
+                        }
                     }
                 } else {
                     found_once = true;
@@ -260,19 +296,19 @@ fn watch<R: squire_core::mem::Reader>(
             Ok(_) => {}
         }
         let dir = save_dir.expect("stdin_open starts false without a save_dir");
-        if let Some((new_slot, new_names)) = wizard::repick_slot(
+        if let Some((new_slot, new_names)) = wizard::repick(
             &mut std::io::stdin().lock(),
             &mut std::io::stderr(),
             game,
             dir,
         )? {
-            slot = new_slot;
+            slot = Some(new_slot);
             names = new_names;
             session.retarget(names.clone());
             found_once = false;
             hinted = false;
             searching_since = std::time::Instant::now();
-            eprintln!("gbs: waiting for the party of save slot {slot} to load...");
+            eprintln!("gbs: waiting for the party of save slot {new_slot} to load...");
         }
     }
 }

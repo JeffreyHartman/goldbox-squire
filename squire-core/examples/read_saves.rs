@@ -1,11 +1,13 @@
 //! Reads a save folder through the real pipeline and prints what it holds.
 //!
 //! This is the table-verification tool: point it at any save folder and it
-//! runs the same save readers, validation and decoding a live session does.
+//! decodes exactly the records a live session's save readers accept, via
+//! [`saves::slot_party_records`]. Nothing here re-derives a path or a walk,
+//! so this tool cannot drift from what the tool it verifies actually does.
 //!
 //!     cargo run --example read_saves -- <game-id> <save-folder>
 
-use squire_core::{games, saves};
+use squire_core::{games, record, saves};
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -28,54 +30,21 @@ fn main() {
     };
     for slot in slots {
         println!("slot {}: {}", slot.letter, slot.names.join(", "));
-        // The names come from the save files; decoding the full record is the
-        // real test of the table, so decode every character too.
-        match game.saves.shape {
-            games::SaveShape::Chrdat => {
-                for (index, name) in slot.names.iter().enumerate() {
-                    let file = format!(
-                        "{dir}/CHRDAT{}{}.{}",
-                        slot.letter,
-                        index + 1,
-                        game.saves.extension
-                    );
-                    let Ok(bytes) = std::fs::read(&file) else {
-                        println!("  {name}: cannot read {file}");
-                        continue;
-                    };
-                    describe(&game, name, &bytes);
-                }
+        let records = match saves::slot_party_records(&game, &dir, slot.letter) {
+            Ok(records) => records,
+            Err(e) => {
+                println!("  {e}");
+                continue;
             }
-            games::SaveShape::PartyFile => {
-                let file = format!("{dir}/SAVGAM{}.{}", slot.letter, game.saves.extension);
-                let Ok(bytes) = std::fs::read(&file) else {
-                    println!("  cannot read {file}");
-                    continue;
-                };
-                // Walk the file the way the reader does, printing each record.
-                let mut pos = game.saves.first_record_offset.unwrap_or(0);
-                let mut seen = 0;
-                while seen < slot.names.len() && pos + game.table.record_len <= bytes.len() {
-                    let candidate = &bytes[pos..pos + game.table.record_len];
-                    if squire_core::record::validate(&game.table, candidate).is_ok() {
-                        let name = squire_core::record::name_at(&game.table, candidate)
-                            .unwrap_or_default();
-                        describe(&game, &name, candidate);
-                        pos += game.table.record_len;
-                        seen += 1;
-                    } else {
-                        pos += 1;
-                    }
-                }
-            }
+        };
+        for (name, bytes) in records {
+            describe(&game, &name, &bytes);
         }
     }
 }
 
 fn describe(game: &games::Game, name: &str, bytes: &[u8]) {
-    match squire_core::record::validate(&game.table, bytes)
-        .and_then(|_| squire_core::record::decode(&game.table, bytes))
-    {
+    match record::validate(&game.table, bytes).and_then(|_| record::decode(&game.table, bytes)) {
         Ok(c) => println!(
             "  {name}: {} {} {} level {}, {}/{} hp, ac {}, thac0 {}, {} xp, age {}, {}",
             c.gender.as_deref().unwrap_or("?"),

@@ -46,6 +46,11 @@ every run, like the slot: both describe one sitting.
 **Save slot.** One saved game, named by a letter A through J. This is what the
 player picks in the game's own load menu. GOG ships slots A and J populated.
 
+**Sitting.** What one run of the wizard resolves beyond the install: the save
+folder (a design's, for a designs game) and the save slot. A fresh install
+has no sitting yet; the game can still be started, and the sitting is picked
+mid-watch after the first in-game save.
+
 **Character index.** One character's position in a save slot's marching order,
 numbered 1 through 6. A save slot holds up to six.
 

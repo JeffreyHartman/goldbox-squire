@@ -2,9 +2,12 @@
 //!
 //! Discovery is structural, not a list of publishers (ADR 0001). An install is
 //! a directory holding a conf file with an `[autoexec]` section containing a
-//! `mount` line, plus a game folder holding `CHRDAT*.SAV` files, directly or
-//! one level down. Which game the install holds comes from that folder's
-//! name, via the registry. A layout this has never seen fails cleanly to the manual path.
+//! `mount` line, plus a game folder that holds the game's start file and its
+//! save files (of whatever shape that game writes), directly or one level
+//! down. Which game the install holds comes from that folder's name, via the
+//! registry. Requiring the start file is what keeps the save-only stub every
+//! sequel ships for party import from reading as an install. A layout this
+//! has never seen fails cleanly to the manual path.
 
 use std::path::{Path, PathBuf};
 
@@ -144,9 +147,14 @@ fn examine(dir: &Path, games: &[games::Game]) -> Vec<DiscoveredInstall> {
         return Vec::new();
     }
 
+    // One walk serves all twelve games; walking once per game multiplied
+    // the whole scan for nothing.
+    let mut dirs = Vec::new();
+    collect_dirs(dir, 0, &mut dirs);
+
     let mut found = Vec::new();
     for game in games {
-        let Some(saves) = find_saves(dir, game) else {
+        let Some(saves) = find_saves(&dirs, dir, game) else {
             continue;
         };
         found.push(DiscoveredInstall {
@@ -215,9 +223,7 @@ fn has_autoexec_mount(text: &str) -> bool {
 /// the pick is stable. A designs game (Unlimited Adventures) keeps one save
 /// folder per design, so its recorded path is the game folder itself and the
 /// design is chosen later.
-fn find_saves(root: &Path, game: &games::Game) -> Option<PathBuf> {
-    let mut dirs = Vec::new();
-    collect_dirs(root, 0, &mut dirs);
+fn find_saves(dirs: &[PathBuf], root: &Path, game: &games::Game) -> Option<PathBuf> {
     for dir in dirs {
         let name = dir.file_name()?.to_str()?;
         if !name.eq_ignore_ascii_case(&game.game_folder) {
@@ -227,10 +233,10 @@ fn find_saves(root: &Path, game: &games::Game) -> Option<PathBuf> {
         // ships a stub of its predecessor for party import — a GATEWAY
         // folder holding nothing but SAVE inside Treasures — and reporting
         // that as an install would launch a game that is not there.
-        if !has_file(&dir, &game.start) {
+        if !has_file(dir, &game.start) {
             continue;
         }
-        if let Some(within) = saves_within(&dir, game) {
+        if let Some(within) = saves_within(dir, game) {
             return dir.join(within).strip_prefix(root).ok().map(Path::to_path_buf);
         }
     }

@@ -113,12 +113,16 @@ const TABLES: &[&str] = &[
 ///
 /// This cannot fail on a correct build. `Game::from_toml` runs over the same
 /// files in the test suite, so a typo fails the tests rather than reaching a
-/// user.
+/// user. The tables parse once per process; every call after clones the
+/// parsed registry.
 pub fn games() -> Vec<Game> {
-    TABLES
-        .iter()
-        .map(|text| Game::from_toml(text).expect("the built-in tables are valid"))
-        .collect()
+    static GAMES: std::sync::LazyLock<Vec<Game>> = std::sync::LazyLock::new(|| {
+        TABLES
+            .iter()
+            .map(|text| Game::from_toml(text).expect("the built-in tables are valid"))
+            .collect()
+    });
+    GAMES.clone()
 }
 
 /// The game with this id, when it is compiled in.

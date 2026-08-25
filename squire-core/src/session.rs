@@ -84,6 +84,15 @@ impl<R: Reader> Session<R> {
     /// anchor is stale and the session scans again rather than reporting old
     /// numbers as if they were live.
     pub fn party(&mut self) -> Result<Party, Error> {
+        // No names yet: the game was launched before its first save exists.
+        // There is nothing to look for, and a scan would read every region
+        // for nothing on every poll.
+        if self.names.is_empty() {
+            return Ok(Party {
+                state: PartyState::NotFound,
+                characters: Vec::new(),
+            });
+        }
         if !self.anchors_still_valid()? {
             self.anchors = self.scan_for_party()?;
         }

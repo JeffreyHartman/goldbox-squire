@@ -15,6 +15,9 @@ pub struct Args {
     pub game: Option<String>,
     /// Answers the second: which save slot, a letter A through J.
     pub slot: Option<char>,
+    /// Answers Unlimited Adventures' extra question: which design
+    /// (adventure module), by name, case-insensitively.
+    pub design: Option<String>,
     /// Points the game at this game folder, and remembers it (ADR 0004).
     pub game_dir: Option<String>,
     /// The emulator for this one run. The config's `dosbox` field is the
@@ -52,7 +55,8 @@ remembered per game), and which save slot. Unlimited Adventures keeps saves
 per adventure module, so it gets one more question: which adventure. Then gbs
 starts the game, waits for the party, and redraws it until the emulator exits
 or you stop it. Each option below answers one of those questions in advance.
-In the menus, 0 goes back.
+In the menus, 0 goes back. A fresh install with no saved game can still be
+started: save inside the game, then press Enter in gbs to pick the save.
 
 OPTIONS:
     --game <ID>        Which game to run, by its id (pool-of-radiance).
@@ -61,6 +65,9 @@ OPTIONS:
                        path, so this flag is never required.
     --slot <A-J>       Which save slot to read. Asked every run otherwise,
                        because a slot describes one sitting.
+    --design <NAME>    Which adventure, for Unlimited Adventures: the design's
+                       name, as its folder is called (BASILISK for
+                       BASILISK.DSN, any case). Asked every run otherwise.
     --dosbox <CMD>     The emulator for this run. Default: the first of
                        dosbox, dosbox-staging, dosbox-x found on PATH. A
                        `dosbox` line in the config file makes it permanent.
@@ -100,6 +107,7 @@ impl Args {
                     args.slot = Some(parse_slot(&raw)?);
                 }
                 "--game-dir" => args.game_dir = Some(value("--game-dir")?),
+                "--design" => args.design = Some(value("--design")?),
                 "--dosbox" => args.dosbox = Some(value("--dosbox")?),
                 "--pid" => {
                     let raw = value("--pid")?;

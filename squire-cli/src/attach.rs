@@ -47,7 +47,7 @@ pub fn resolve(args: &Args, config: &Config) -> Result<Resolved, String> {
         None => install_of(config, &game_id)
             .ok_or("--pid cannot guess the save folder. Pass --game-dir <DIR>.")?,
     };
-    let save_dir = resolve_design(&game, save_dir)?;
+    let save_dir = resolve_design(&game, save_dir, args.design.as_deref())?;
 
     let slots = saves::populated_slots(&game, &save_dir).map_err(|e| e.to_string())?;
     let slot = match args.slot {
@@ -84,21 +84,39 @@ pub fn resolve(args: &Args, config: &Config) -> Result<Resolved, String> {
 }
 
 /// Narrows a designs game's folder to one design's save folder, without
-/// asking. A folder already holding save files passes through, one lone
-/// design with a saved game is the only possible answer, and anything else
-/// is an error naming the candidates.
-fn resolve_design(game: &games::Game, dir: PathBuf) -> Result<PathBuf, String> {
+/// asking. A folder already holding save files passes through, `--design`
+/// names one, one lone design with a saved game is the only possible answer,
+/// and anything else is an error naming the candidates.
+fn resolve_design(
+    game: &games::Game,
+    dir: PathBuf,
+    named: Option<&str>,
+) -> Result<PathBuf, String> {
     if !game.saves.designs || saves::holds_save_files(game, &dir) {
         return Ok(dir);
     }
     let designs = saves::designs(game, &dir).map_err(|e| e.to_string())?;
+    if let Some(name) = named {
+        return designs
+            .iter()
+            .find(|d| d.name.eq_ignore_ascii_case(name))
+            .map(|d| d.save_dir.clone())
+            .ok_or_else(|| {
+                let known: Vec<&str> = designs.iter().map(|d| d.name.as_str()).collect();
+                format!(
+                    "no design named `{name}` holds a saved game. Designs \
+                     with saves: {}",
+                    known.join(", ")
+                )
+            });
+    }
     if let [only] = designs.as_slice() {
         return Ok(only.save_dir.clone());
     }
     let names: Vec<String> = designs.iter().map(|d| d.name.clone()).collect();
     Err(format!(
         "--pid cannot guess the design. Designs with saves: {}. Pass \
-         --game-dir pointing at one design's SAVE folder.",
+         --design <NAME>, or --game-dir pointing at one design's SAVE folder.",
         names.join(", ")
     ))
 }

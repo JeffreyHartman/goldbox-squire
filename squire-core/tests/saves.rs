@@ -245,11 +245,48 @@ fn the_savgam_party_size_caps_the_walk() {
 
 #[test]
 fn a_zero_filled_savgam_is_not_a_populated_slot() {
-    // A fresh design ships a SAVGAMA.CSV full of zeroes.
+    // A fresh design ships a SAVGAMA.CSV full of zeroes. The error must not
+    // claim the files are absent: the user can see them.
     let dir = tempdir();
     std::fs::write(format!("{dir}/SAVGAMA.CSV"), vec![0u8; 10285]).unwrap();
 
-    assert!(saves::populated_slots(&frua(), &dir).is_err());
+    let err = saves::populated_slots(&frua(), &dir).unwrap_err().to_string();
+
+    assert!(err.contains("no readable character"), "got: {err}");
+    assert!(!err.starts_with("game folder: no SAVGAM"), "got: {err}");
+}
+
+#[test]
+fn two_party_members_with_one_name_both_survive_when_the_size_is_known() {
+    // A party may legitimately hold two characters with the same name. The
+    // party size, not name uniqueness, is what guards against the stale tail.
+    let dir = tempdir();
+    let mut bytes = savgam_header(2);
+    bytes.extend_from_slice(&frua_record("AXEL"));
+    bytes.extend_from_slice(&frua_record("AXEL"));
+    bytes.extend_from_slice(&frua_record("STALETAIL"));
+    std::fs::write(format!("{dir}/SAVGAMA.CSV"), bytes).unwrap();
+
+    let names = saves::slot_party_names(&frua(), &dir, 'A').unwrap();
+
+    assert_eq!(names, vec!["AXEL", "AXEL"]);
+}
+
+#[test]
+fn slot_party_records_hands_back_the_bytes_the_walk_accepted() {
+    // The verification tool decodes exactly what a live session would read,
+    // so the record bytes come from the same walk as the names.
+    let dir = tempdir();
+    let party = savgam_bytes(&["LIZABELL"]);
+    std::fs::write(format!("{dir}/SAVGAMA.CSV"), party).unwrap();
+
+    let records = saves::slot_party_records(&frua(), &dir, 'A').unwrap();
+
+    assert_eq!(records.len(), 1);
+    let (name, bytes) = &records[0];
+    assert_eq!(name, "LIZABELL");
+    let decoded = squire_core::record::decode(&frua().table, bytes).unwrap();
+    assert_eq!(decoded.name, "LIZABELL");
 }
 
 #[test]

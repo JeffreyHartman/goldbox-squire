@@ -12,6 +12,12 @@ fn parse(argv: &[&str]) -> Result<Args, String> {
 // --- arguments -------------------------------------------------------------
 
 #[test]
+fn design_names_the_adventure_in_advance() {
+    let a = parse(&["--design", "BASILISK"]).unwrap();
+    assert_eq!(a.design.as_deref(), Some("BASILISK"));
+}
+
+#[test]
 fn game_dir_sets_the_game_folder() {
     let a = parse(&["--game-dir", "/games/poolrad"]).unwrap();
 

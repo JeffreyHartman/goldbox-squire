@@ -19,12 +19,16 @@ start = "START.BAT"
 machine = "svga_s3"
 record_len = 414   # offsets 0x000 through 0x19D
 
-# the whole party sits in one SAVGAM{slot}.QSV file. No offsets
-# for the party size or the first record are known, so the file
-# is scanned whole and validation decides
+# The whole party sits in one SAVGAM{slot}.QSV file. The header matches
+# Unlimited Adventures': the party size at 1037 and the first record at 1039,
+# verified against the SAVGAMA.QSV the Steam install ships (size byte 6, and
+# the first name sits at exactly 1039 + 0x68). The cap keeps the stale record
+# copies in the file's tail from reading as phantom party members.
 [saves]
 shape = "party_file"
 extension = "QSV"
+party_size_offset = 1037
+first_record_offset = 1039
 
 [[field]]
 name = "name"

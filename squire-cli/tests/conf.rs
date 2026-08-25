@@ -88,6 +88,34 @@ fn the_autoexec_handles_the_steam_shape_where_saves_sit_deeper() {
 }
 
 #[test]
+fn the_autoexec_handles_an_install_whose_root_is_the_game_folder() {
+    // A typed path points straight at the game folder, so the recorded save
+    // path is empty and the folder to mount is the root's parent. This is
+    // every manual Unlimited Adventures install, and any chrdat game whose
+    // typed folder holds the saves directly.
+    let install = Install {
+        game: "unlimited-adventures".into(),
+        kind: InstallKind::Manual,
+        root: "/home/x/frua/UA".into(),
+        saves: String::new(),
+    };
+    let game = games::find("unlimited-adventures").unwrap();
+
+    let commands = conf::autoexec(&install, &game).unwrap();
+
+    assert_eq!(
+        commands,
+        vec![
+            "mount c \"/home/x/frua\"".to_string(),
+            "c:".into(),
+            "cd UA".into(),
+            "START.BAT".into(),
+            "exit".into(),
+        ]
+    );
+}
+
+#[test]
 fn a_saves_path_without_the_game_folder_is_an_error_naming_it() {
     let install = install("/home/x/somewhere", "saves");
     let game = games::find("pool-of-radiance").unwrap();

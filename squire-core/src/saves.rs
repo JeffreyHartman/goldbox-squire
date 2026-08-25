@@ -54,11 +54,23 @@ pub fn slot_party_names(
     save_dir: impl AsRef<Path>,
     letter: char,
 ) -> Result<Vec<String>, Error> {
+    let records = slot_party_records(game, save_dir, letter)?;
+    Ok(records.into_iter().map(|(name, _)| name).collect())
+}
+
+/// The party of one save slot as (name, record bytes) pairs, in marching
+/// order. This is the walk everything else builds on, public so a
+/// verification tool decodes exactly the records a live session would.
+pub fn slot_party_records(
+    game: &Game,
+    save_dir: impl AsRef<Path>,
+    letter: char,
+) -> Result<Vec<(String, Vec<u8>)>, Error> {
     let letter = normalize_letter(letter)?;
     let files = save_files(save_dir.as_ref())?;
 
-    let names = read_slot(game, &files, letter);
-    if names.is_empty() {
+    let records = read_slot_records(game, &files, letter);
+    if records.is_empty() {
         let populated: Vec<String> = SLOT_LETTERS
             .iter()
             .filter(|l| !read_slot(game, &files, **l).is_empty())
@@ -74,7 +86,7 @@ pub fn slot_party_names(
         };
         return Err(Error::GameFolder(hint));
     }
-    Ok(names)
+    Ok(records)
 }
 
 /// Every populated save slot of a save folder, in letter order.
@@ -184,14 +196,30 @@ pub fn holds_save_files(game: &Game, dir: impl AsRef<Path>) -> bool {
 }
 
 /// What "no saves" means for this game's shape, worded for the user.
+///
+/// Files that exist but yield no character are a different fact from no
+/// files at all, and telling a user the files are absent when they can see
+/// them sends the fix in the wrong direction.
 fn no_saves_here(game: &Game, dir: &Path) -> String {
     let (prefix, ext) = shape_pattern(game);
-    format!(
-        "no {}*.{} files in {}. Save the game once inside it, then try again",
+    let pattern = format!(
+        "{}*.{}",
         prefix.to_uppercase(),
-        ext.trim_start_matches('.').to_uppercase(),
-        dir.display()
-    )
+        ext.trim_start_matches('.').to_uppercase()
+    );
+    if holds_save_files(game, dir) {
+        format!(
+            "the {pattern} files in {} hold no readable character. They may \
+             be from a fresh install that was never saved in, or damaged. \
+             Save the game once inside it, then try again",
+            dir.display()
+        )
+    } else {
+        format!(
+            "no {pattern} files in {}. Save the game once inside it, then try again",
+            dir.display()
+        )
+    }
 }
 
 /// The lowercased filename prefix and dotted extension of this game's saves.
@@ -215,6 +243,19 @@ fn normalize_letter(letter: char) -> Result<char, Error> {
 
 /// One slot's names, in marching order. Empty when the slot is not populated.
 fn read_slot(game: &Game, files: &HashMap<String, PathBuf>, letter: char) -> Vec<String> {
+    read_slot_records(game, files, letter)
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect()
+}
+
+/// One slot as (name, record bytes) pairs, in marching order. Empty when the
+/// slot is not populated.
+fn read_slot_records(
+    game: &Game,
+    files: &HashMap<String, PathBuf>,
+    letter: char,
+) -> Vec<(String, Vec<u8>)> {
     match game.saves.shape {
         SaveShape::Chrdat => read_chrdat_slot(game, files, letter),
         SaveShape::PartyFile => read_party_file_slot(game, files, letter),
@@ -222,9 +263,13 @@ fn read_slot(game: &Game, files: &HashMap<String, PathBuf>, letter: char) -> Vec
 }
 
 /// One slot of the one-file-per-character shape.
-fn read_chrdat_slot(game: &Game, files: &HashMap<String, PathBuf>, letter: char) -> Vec<String> {
+fn read_chrdat_slot(
+    game: &Game,
+    files: &HashMap<String, PathBuf>,
+    letter: char,
+) -> Vec<(String, Vec<u8>)> {
     let ext = game.saves.extension.to_ascii_lowercase();
-    let mut names = Vec::new();
+    let mut records = Vec::new();
     for index in 1..=MAX_CHARACTERS {
         let key = format!("chrdat{}{index}.{ext}", letter.to_ascii_lowercase());
         let Some(path) = files.get(&key) else {
@@ -233,16 +278,16 @@ fn read_chrdat_slot(game: &Game, files: &HashMap<String, PathBuf>, letter: char)
         let Ok(bytes) = std::fs::read(path) else {
             continue;
         };
-        // Only the name is read, through the table, so the games that store
-        // it mid-record work the same as the ones that start with it. A file
-        // too damaged to hold one is skipped, not failed over: the game
-        // writes other files with these names, and one bad file is not worth
-        // losing the slot.
+        // Only the name is trusted from disk, through the table, so the games
+        // that store it mid-record work the same as the ones that start with
+        // it. A file too damaged to hold one is skipped, not failed over: the
+        // game writes other files with these names, and one bad file is not
+        // worth losing the slot.
         if let Some(name) = record::name_at(&game.table, &bytes) {
-            names.push(name);
+            records.push((name, bytes));
         }
     }
-    names
+    records
 }
 
 /// One slot of the whole-party-in-one-file shape.
@@ -250,7 +295,7 @@ fn read_party_file_slot(
     game: &Game,
     files: &HashMap<String, PathBuf>,
     letter: char,
-) -> Vec<String> {
+) -> Vec<(String, Vec<u8>)> {
     let ext = game.saves.extension.to_ascii_lowercase();
     let key = format!("savgam{}.{ext}", letter.to_ascii_lowercase());
     let Some(path) = files.get(&key) else {
@@ -259,10 +304,10 @@ fn read_party_file_slot(
     let Ok(bytes) = std::fs::read(path) else {
         return Vec::new();
     };
-    party_file_names(game, &bytes)
+    party_file_records(game, &bytes)
 }
 
-/// The party's names out of one `SAVGAM` file, in marching order.
+/// The party out of one `SAVGAM` file, in marching order.
 ///
 /// The records sit back to back from `first_record_offset`, but each carries
 /// a variable tail of item data whose length the file does not state
@@ -270,11 +315,14 @@ fn read_party_file_slot(
 /// position, and on a miss slides forward one byte. Validation is what keeps
 /// the item bytes from ever reading as a character.
 ///
-/// The tail of the file holds stale copies of earlier records, so the walk
-/// stops at the party size when the table knows where that is stored, and
-/// deduplicates by name either way.
-fn party_file_names(game: &Game, bytes: &[u8]) -> Vec<String> {
+/// The tail of the file holds stale copies of earlier records. When the
+/// table knows where the party size is stored, the count is the guard, and a
+/// party may legitimately hold two characters with one name. Only when the
+/// size is unknown does the walk fall back to deduplicating by name, which
+/// is the best remaining defense against the tail.
+fn party_file_records(game: &Game, bytes: &[u8]) -> Vec<(String, Vec<u8>)> {
     let table = &game.table;
+    let size_known = game.saves.party_size_offset.is_some();
     let want = match game.saves.party_size_offset {
         Some(offset) => match bytes.get(offset) {
             Some(&size) => (size as usize).min(MAX_CHARACTERS),
@@ -284,14 +332,14 @@ fn party_file_names(game: &Game, bytes: &[u8]) -> Vec<String> {
         None => MAX_CHARACTERS,
     };
 
-    let mut names = Vec::new();
+    let mut records: Vec<(String, Vec<u8>)> = Vec::new();
     let mut pos = game.saves.first_record_offset.unwrap_or(0);
-    while names.len() < want && pos + table.record_len <= bytes.len() {
+    while records.len() < want && pos + table.record_len <= bytes.len() {
         let candidate = &bytes[pos..pos + table.record_len];
         if record::validate(table, candidate).is_ok() {
             if let Some(name) = record::name_at(table, candidate) {
-                if !names.contains(&name) {
-                    names.push(name);
+                if size_known || !records.iter().any(|(n, _)| *n == name) {
+                    records.push((name, candidate.to_vec()));
                 }
             }
             pos += table.record_len;
@@ -299,7 +347,7 @@ fn party_file_names(game: &Game, bytes: &[u8]) -> Vec<String> {
             pos += 1;
         }
     }
-    names
+    records
 }
 
 /// When any of this game's save files in `files` last changed.

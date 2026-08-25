@@ -26,18 +26,21 @@ enum Answer<T> {
     Back,
 }
 
-/// Asks whatever the arguments left unanswered and returns the install key,
-/// the save folder (a design's, for a designs game), and the save slot.
-/// Records the picks (`last_game`, `chosen`, a typed directory) in the
-/// config; the caller saves it.
+/// Asks whatever the arguments left unanswered and returns the install key
+/// and the sitting: the save folder (a design's, for a designs game) and the
+/// save slot. `None` for the sitting means no saved game exists yet and the
+/// user chose to launch anyway; the party is picked mid-watch after the
+/// first in-game save. Records the picks (`last_game`, `chosen`, a typed
+/// directory) in the config; the caller saves it.
 pub fn choose<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
     config: &mut Config,
     game_arg: Option<&str>,
     game_dir_arg: Option<&str>,
+    design_arg: Option<&str>,
     slot_arg: Option<char>,
-) -> Result<(String, std::path::PathBuf, char), String> {
+) -> Result<(String, Option<(std::path::PathBuf, char)>), String> {
     loop {
         let game_id = match game_arg {
             Some(id) => validate_game(id)?,
@@ -64,14 +67,52 @@ pub fn choose<R: BufRead, W: Write>(
 
         let install = &config.installs[&key];
         let save_dir = if game.saves.designs {
-            match ask_design(input, output, &game, &install.save_dir())? {
-                Answer::Picked(dir) => dir,
-                Answer::Back => continue,
+            match design_arg {
+                // An explicit --design that cannot be honored is an error:
+                // a script must not silently launch without its party.
+                Some(name) => named_design(&game, &install.save_dir(), name)?,
+                None => match saves::designs(&game, install.save_dir()) {
+                    Ok(designs) => match ask_design(input, output, &designs)? {
+                        Answer::Picked(dir) => dir,
+                        Answer::Back => continue,
+                    },
+                    // A fresh install has designs but no saved game in any.
+                    // gbs is the launcher, so refusing here would leave no
+                    // way to ever create that first save.
+                    Err(reason) => {
+                        if slot_arg.is_some() {
+                            return Err(reason.to_string());
+                        }
+                        if launch_anyway(input, output, &reason.to_string())? {
+                            return Ok((key, None));
+                        }
+                        continue;
+                    }
+                },
             }
+        } else if let Some(name) = design_arg {
+            return Err(format!(
+                "--design means nothing to {}: only Unlimited Adventures keeps \
+                 saves per design (got `{name}`)",
+                game.name
+            ));
         } else {
             install.save_dir()
         };
-        let slots = saves::populated_slots(&game, &save_dir).map_err(|e| e.to_string())?;
+        let slots = match saves::populated_slots(&game, &save_dir) {
+            Ok(slots) => slots,
+            Err(reason) => {
+                // Same fresh-install escape as above, chrdat shape. An
+                // explicit --slot stays a hard error.
+                if slot_arg.is_some() {
+                    return Err(reason.to_string());
+                }
+                if launch_anyway(input, output, &reason.to_string())? {
+                    return Ok((key, None));
+                }
+                continue;
+            }
+        };
 
         let slot = match slot_arg {
             Some(letter) => {
@@ -92,21 +133,73 @@ pub fn choose<R: BufRead, W: Write>(
             },
         };
 
-        return Ok((key, save_dir, slot));
+        return Ok((key, Some((save_dir, slot))));
     }
 }
 
-/// Re-asks the slot question mid-watch.
+/// The fresh-install escape: no saved game was found, so offer to start the
+/// game without one. Enter launches, 0 goes back to the game question.
+fn launch_anyway<R: BufRead, W: Write>(
+    input: &mut R,
+    output: &mut W,
+    reason: &str,
+) -> Result<bool, String> {
+    write!(
+        output,
+        "{reason}.\nStart the game anyway? After saving in game, press Enter \
+         in gbs to pick the save.\nPress Enter to start, or 0 to go back: "
+    )
+    .and_then(|_| output.flush())
+    .map_err(|e| e.to_string())?;
+    loop {
+        let line = read_line(input)?;
+        match line.trim() {
+            "0" => return Ok(false),
+            "" => return Ok(true),
+            _ => {
+                write!(output, "Press Enter to start, or 0 to go back: ")
+                    .and_then(|_| output.flush())
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+}
+
+/// Re-asks the sitting mid-watch: the design first for a designs game, then
+/// the slot. `game_dir` is the install's save folder, the game folder itself
+/// for a designs game.
 ///
-/// Returns the new slot and its party names, or `None` when the user backed
-/// out, which means keep watching the slot already chosen.
-pub fn repick_slot<R: BufRead, W: Write>(
+/// Returns the new slot and its party names, or `None` to keep watching what
+/// was already chosen. Finding no saved game is also `None`, with the reason
+/// printed: mid-watch, the game is running, and killing the watch over a
+/// repick would take the session down with it.
+pub fn repick<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
     game: &games::Game,
-    save_dir: &Path,
+    game_dir: &Path,
 ) -> Result<Option<(char, Vec<String>)>, String> {
-    let slots = saves::populated_slots(game, save_dir).map_err(|e| e.to_string())?;
+    let save_dir = if game.saves.designs {
+        match saves::designs(game, game_dir) {
+            Ok(designs) => match ask_design(input, output, &designs)? {
+                Answer::Picked(dir) => dir,
+                Answer::Back => return Ok(None),
+            },
+            Err(reason) => {
+                writeln!(output, "{reason}.").map_err(|e| e.to_string())?;
+                return Ok(None);
+            }
+        }
+    } else {
+        game_dir.to_path_buf()
+    };
+    let slots = match saves::populated_slots(game, &save_dir) {
+        Ok(slots) => slots,
+        Err(reason) => {
+            writeln!(output, "{reason}.").map_err(|e| e.to_string())?;
+            return Ok(None);
+        }
+    };
     match ask_slot(input, output, &slots)? {
         Answer::Picked(letter) => {
             let names = slots
@@ -163,17 +256,35 @@ fn point_at(config: &mut Config, game: &games::Game, dir: &str) -> Result<String
     Ok(config.choose_manual_dir(&game.id, dir, &saves.to_string_lossy()))
 }
 
+/// Resolves `--design` to a design's save folder, by name, any case.
+fn named_design(
+    game: &games::Game,
+    game_dir: &Path,
+    name: &str,
+) -> Result<std::path::PathBuf, String> {
+    let designs = saves::designs(game, game_dir).map_err(|e| e.to_string())?;
+    designs
+        .iter()
+        .find(|d| d.name.eq_ignore_ascii_case(name))
+        .map(|d| d.save_dir.clone())
+        .ok_or_else(|| {
+            let known: Vec<&str> = designs.iter().map(|d| d.name.as_str()).collect();
+            format!(
+                "no design named `{name}` holds a saved game. Designs with \
+                 saves: {}",
+                known.join(", ")
+            )
+        })
+}
+
 /// The designs question, asked every run for the one game that has them:
 /// which adventure? One entry per design holding a saved game, the one
 /// played most recently first, so Enter continues it.
 fn ask_design<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
-    game: &games::Game,
-    game_dir: &Path,
+    designs: &[saves::Design],
 ) -> Result<Answer<std::path::PathBuf>, String> {
-    let designs = saves::designs(game, game_dir).map_err(|e| e.to_string())?;
-
     let say = |e: &mut W| -> std::io::Result<()> {
         writeln!(e, "Which adventure?")?;
         for (n, design) in designs.iter().enumerate() {

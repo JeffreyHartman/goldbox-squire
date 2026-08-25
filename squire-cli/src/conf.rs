@@ -85,7 +85,9 @@ pub fn autoexec(install: &Install, game: &Game) -> Result<Vec<String>, String> {
 }
 
 /// The folder above the game folder: everything in the install's save path
-/// before the component named like the game's own DOS folder.
+/// before the component named like the game's own DOS folder. When the
+/// install root itself is the game folder — a typed path points straight at
+/// it, so its recorded save path is empty — the mount is the root's parent.
 fn mount_dir(install: &Install, game_folder: &str) -> Option<PathBuf> {
     let saves = Path::new(&install.saves);
     let mut mount = PathBuf::from(&install.root);
@@ -95,6 +97,14 @@ fn mount_dir(install: &Install, game_folder: &str) -> Option<PathBuf> {
             return Some(mount);
         }
         mount.push(name);
+    }
+    let root = Path::new(&install.root);
+    if root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.eq_ignore_ascii_case(game_folder))
+    {
+        return root.parent().map(Path::to_path_buf);
     }
     None
 }
