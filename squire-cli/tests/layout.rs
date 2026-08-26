@@ -9,7 +9,7 @@
 //! Jeff looked at and answered for, so the answers are pinned here. No
 //! constant in `layout.rs` may name any of them.
 
-use squire_cli::layout::{self, CardLine, Liveness, Plan, Sitting, Size, Toggles};
+use squire_cli::layout::{self, Caption, CardLine, Liveness, Plan, Size, Toggles};
 use squire_core::record::Character;
 use squire_core::session::{Party, PartyState};
 
@@ -65,8 +65,8 @@ fn who(
     }
 }
 
-fn sitting() -> Sitting {
-    Sitting {
+fn caption() -> Caption {
+    Caption {
         game: "Pool of Radiance".into(),
         slot: Some('J'),
         panel: "party".into(),
@@ -78,7 +78,7 @@ fn at(cols: u16, rows: u16) -> Plan {
     layout::plan(
         Size { cols, rows },
         &party(),
-        &sitting(),
+        &caption(),
         Toggles::default(),
     )
 }
@@ -145,7 +145,7 @@ fn a_key_can_ask_for_a_different_number_across() {
             rows: 14,
         },
         &party(),
-        &sitting(),
+        &caption(),
         toggles,
     );
     assert_eq!(plan.grid.expect("six across fits at 160x14").across, 6);
@@ -159,7 +159,7 @@ fn an_impossible_key_override_falls_back_to_the_rule() {
         across: Some(6),
         ..Toggles::default()
     };
-    let plan = layout::plan(Size { cols: 40, rows: 20 }, &party(), &sitting(), toggles);
+    let plan = layout::plan(Size { cols: 40, rows: 20 }, &party(), &caption(), toggles);
     assert_eq!(plan.grid.expect("something fits at 40x20").across, 2);
 }
 
@@ -208,7 +208,7 @@ fn fields_leave_in_the_settled_order_as_the_card_narrows() {
         let plan = layout::plan(
             Size { cols: 19, rows },
             &party(),
-            &sitting(),
+            &caption(),
             Toggles {
                 across: Some(1),
                 ..Toggles::default()
@@ -251,7 +251,7 @@ fn armour_class_leaves_before_the_condition_does() {
     let plan = layout::plan(
         Size { cols: 19, rows: 27 },
         &party(),
-        &sitting(),
+        &caption(),
         Toggles {
             across: Some(1),
             ..Toggles::default()
@@ -297,11 +297,11 @@ fn the_toggle_adds_the_ability_line_and_moves_nothing_else() {
         cols: 110,
         rows: 50,
     };
-    let off = layout::plan(size, &party(), &sitting(), Toggles::default());
+    let off = layout::plan(size, &party(), &caption(), Toggles::default());
     let on = layout::plan(
         size,
         &party(),
-        &sitting(),
+        &caption(),
         Toggles {
             abilities: true,
             ..Toggles::default()
@@ -326,7 +326,7 @@ fn no_card_ever_shows_one_ability_score() {
         let plan = layout::plan(
             Size { cols, rows: 40 },
             &party,
-            &sitting(),
+            &caption(),
             Toggles {
                 abilities: true,
                 ..Toggles::default()
@@ -392,7 +392,7 @@ fn a_lost_anchor_dims_the_party_and_says_why() {
             rows: 50,
         },
         &party,
-        &sitting(),
+        &caption(),
         Toggles::default(),
     );
     assert!(plan.dim, "a lost anchor must dim");
@@ -419,7 +419,7 @@ fn a_partial_party_is_not_a_lost_one() {
             rows: 50,
         },
         &party,
-        &sitting(),
+        &caption(),
         Toggles::default(),
     );
     assert_eq!(plan.liveness, Liveness::Partial);
@@ -444,7 +444,7 @@ fn the_reason_survives_at_a_hostile_size() {
     let plan = layout::plan(
         Size { cols: 24, rows: 3 },
         &party,
-        &sitting(),
+        &caption(),
         Toggles::default(),
     );
     assert!(plan.dim);
@@ -506,7 +506,7 @@ fn an_empty_party_is_not_a_panic() {
             rows: 50,
         },
         &empty,
-        &sitting(),
+        &caption(),
         Toggles::default(),
     );
     assert!(plan.grid.is_none());
@@ -520,7 +520,7 @@ fn a_party_of_one_gets_a_card() {
     let plan = layout::plan(
         Size { cols: 60, rows: 40 },
         &one,
-        &sitting(),
+        &caption(),
         Toggles::default(),
     );
     let grid = plan.grid.expect("one character still draws");
@@ -540,7 +540,7 @@ fn a_party_that_does_not_divide_evenly_still_lays_out() {
             rows: 42,
         },
         &five,
-        &sitting(),
+        &caption(),
         Toggles::default(),
     );
     let grid = plan.grid.expect("five characters lay out somehow");
@@ -574,15 +574,15 @@ fn the_status_line_lists_the_keys_when_there_is_room() {
 
 #[test]
 fn the_watch_loops_own_words_reach_the_status_line() {
-    let mut sitting = sitting();
-    sitting.note = Some("waiting for the party of save slot J to load...".into());
+    let mut caption = caption();
+    caption.note = Some("waiting for the party of save slot J to load...".into());
     let plan = layout::plan(
         Size {
             cols: 160,
             rows: 42,
         },
         &party(),
-        &sitting,
+        &caption,
         Toggles::default(),
     );
     assert!(plan.status.contains("waiting"), "{:?}", plan.status);
@@ -590,15 +590,15 @@ fn the_watch_loops_own_words_reach_the_status_line() {
 
 #[test]
 fn a_run_with_no_slot_yet_does_not_invent_one() {
-    let mut sitting = sitting();
-    sitting.slot = None;
+    let mut caption = caption();
+    caption.slot = None;
     let plan = layout::plan(
         Size {
             cols: 110,
             rows: 50,
         },
         &party(),
-        &sitting,
+        &caption,
         Toggles::default(),
     );
     assert!(!plan.header.contains("slot"), "{:?}", plan.header);
@@ -612,15 +612,15 @@ fn nothing_found_yet_is_not_a_lost_anchor() {
         state: PartyState::NotFound,
         characters: Vec::new(),
     };
-    let mut sitting = sitting();
-    sitting.note = Some("waiting for the party of save slot J to load...".into());
+    let mut caption = caption();
+    caption.note = Some("waiting for the party of save slot J to load...".into());
     let plan = layout::plan(
         Size {
             cols: 110,
             rows: 50,
         },
         &empty,
-        &sitting,
+        &caption,
         Toggles::default(),
     );
     assert_eq!(plan.liveness, Liveness::Waiting);

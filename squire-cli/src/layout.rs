@@ -101,16 +101,15 @@ impl Grid {
     pub fn rows(&self) -> u16 {
         self.down * (self.card_rows + 1) + 1
     }
-
-    /// The width inside the card at this position in marching order.
-    pub fn width_of(&self, character: usize) -> u16 {
-        self.widths[character % self.widths.len()]
-    }
 }
 
-/// What the run is: the words the header and the status line need.
+/// The words that say which run is on screen.
+///
+/// Not a [`crate::wizard::Sitting`], which is the save folder and the slot the
+/// wizard resolved. This is what the header and the status line say about the
+/// run, and the plan fits both to the width.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Sitting {
+pub struct Caption {
     /// The game's display name.
     pub game: String,
     /// The save slot, when one has been picked.
@@ -169,7 +168,7 @@ const CARD_AIR: u16 = 4;
 
 /// The keys the HUD answers to, shown on the status line so that they are
 /// visible without reading the source.
-const KEY_HINTS: &str = "q quit · a abilities · c columns · enter slot";
+const KEY_HINTS: &str = "q quit · ↑↓ pick · a abilities · c columns · enter slot";
 
 /// The rows Squire's name takes when it is drawn large.
 pub const WORDMARK_ROWS: u16 = 5;
@@ -179,15 +178,15 @@ pub const WORDMARK_ROWS: u16 = 5;
 const WORDMARK_AIR: u16 = 2;
 
 /// What is shown at this size, for this party, with these preferences.
-pub fn plan(size: Size, party: &Party, sitting: &Sitting, toggles: Toggles) -> Plan {
+pub fn plan(size: Size, party: &Party, caption: &Caption, toggles: Toggles) -> Plan {
     let liveness = liveness(party);
     let grid = choose(size, party, toggles);
     let wordmark = wordmark_fits(size, grid.as_ref());
 
     Plan {
         size,
-        header: fit(&header_text(sitting), size.cols),
-        status: two_up(&status_text(sitting, party, liveness), KEY_HINTS, size.cols),
+        header: fit(&header_text(caption), size.cols),
+        status: two_up(&status_text(caption, party, liveness), KEY_HINTS, size.cols),
         grid,
         wordmark,
         dim: liveness == Liveness::Lost,
@@ -245,7 +244,11 @@ impl Shape {
     /// Every part of this comes from the party and from the game's class
     /// names. None of it comes from anybody's monitor.
     fn wants(&self) -> u16 {
-        self.name + NAME_GAP + self.class + CARD_PAD + CARD_AIR
+        self.name
+            .saturating_add(NAME_GAP)
+            .saturating_add(self.class)
+            .saturating_add(CARD_PAD)
+            .saturating_add(CARD_AIR)
     }
 
     /// The narrowest card worth drawing: one that can hold a whole hit point
@@ -253,6 +256,16 @@ impl Shape {
     fn floor(&self) -> u16 {
         self.hit_points.max(1)
     }
+}
+
+/// The numbers of cards across that a party of `n` divides into evenly.
+///
+/// A ragged last row would make one card differ from its neighbours, which the
+/// party-wide shape rule already forbids. The key that changes the number
+/// across steps through this same list, so it can never ask for an
+/// arrangement the rule would not have offered.
+pub fn arrangements(n: u16) -> Vec<u16> {
+    (1..=n).filter(|across| n % across == 0).collect()
 }
 
 /// How many cards across, how wide, and how tall.
@@ -271,10 +284,7 @@ fn choose(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
     let shape = shape_of(&party.characters);
     let body = size.rows.checked_sub(CHROME_ROWS)?;
 
-    // A ragged last row would make one card differ from its neighbours, which
-    // the party-wide shape rule already forbids. So only arrangements that
-    // divide the party evenly are offered.
-    let even: Vec<u16> = (1..=n).filter(|across| n % across == 0).collect();
+    let even = arrangements(n);
 
     let build = |across: u16| -> Option<(u16, Grid)> {
         let down = n / across;
@@ -357,12 +367,16 @@ fn card_lines(
     // Priority, then the line. Lower survives longer.
     let mut lines: Vec<(u8, CardLine)> = Vec::new();
 
-    let class_here = width >= shape.name + NAME_GAP + shape.class;
+    let class_here = width
+        >= shape
+            .name
+            .saturating_add(NAME_GAP)
+            .saturating_add(shape.class);
     lines.push((0, CardLine::Name { class_here }));
 
     // The bar takes what the hit point line has left after armour class.
     let room = width.saturating_sub(shape.hit_points + 1);
-    let armor_here = room >= shape.armor + NAME_GAP;
+    let armor_here = room >= shape.armor.saturating_add(NAME_GAP);
     let bar = if armor_here {
         room.saturating_sub(shape.armor + CARD_PAD).min(BAR_MAX)
     } else {
@@ -493,10 +507,10 @@ pub fn line_text(c: &Character, line: &CardLine, width: u16) -> String {
 
 // --- The header and the status line ---------------------------------------
 
-fn header_text(sitting: &Sitting) -> String {
-    match sitting.slot {
-        Some(letter) => format!("gbs — {} · slot {letter}", sitting.game),
-        None => format!("gbs — {}", sitting.game),
+fn header_text(caption: &Caption) -> String {
+    match caption.slot {
+        Some(letter) => format!("gbs — {} · slot {letter}", caption.game),
+        None => format!("gbs — {}", caption.game),
     }
 }
 
@@ -504,15 +518,15 @@ fn header_text(sitting: &Sitting) -> String {
 ///
 /// The panel's number goes first because the number keys are what selects it,
 /// and a panel that shows its own key needs no menu built for it.
-fn status_text(sitting: &Sitting, party: &Party, liveness: Liveness) -> String {
+fn status_text(caption: &Caption, party: &Party, liveness: Liveness) -> String {
     let state = match liveness {
         Liveness::Live => format!("live · {}", party.characters.len()),
         Liveness::Partial => format!("partial · {} shown", party.characters.len()),
         Liveness::Lost => "anchor lost, rescanning".to_string(),
         Liveness::Waiting => "no party yet".to_string(),
     };
-    let mut text = format!("1 {} · {state}", sitting.panel);
-    if let Some(note) = &sitting.note {
+    let mut text = format!("1 {} · {state}", caption.panel);
+    if let Some(note) = &caption.note {
         text.push_str(" · ");
         text.push_str(note);
     }
@@ -592,7 +606,7 @@ fn fit(text: &str, width: u16) -> String {
 /// important of the two, and half of each is worse than all of one.
 fn two_up(left: &str, right: &str, width: u16) -> String {
     let (l, r) = (self::width(left), self::width(right));
-    if l + r + 1 > width {
+    if l.saturating_add(r).saturating_add(1) > width {
         return fit(left, width);
     }
     let mut out = left.to_string();

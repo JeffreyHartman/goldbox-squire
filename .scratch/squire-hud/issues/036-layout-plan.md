@@ -80,3 +80,17 @@ size, and splitting them would have put half of it out of reach of the tests.
 mockups with its argument attached. Everything else comes from the party or
 from the game data. No constant names a size, and the sizes that do appear in
 the tests are 034's, where they belong.
+
+## Review, answered
+
+Two-axis review, 2026-08-25.
+
+- `Sitting` collided with `wizard::Sitting`, which CONTEXT.md defines as the
+  save folder and the slot. Renamed to `Caption`, and added to CONTEXT.md
+  along with `Liveness`, which was also new vocabulary.
+- The even-divisor rule had been copied into the key handler. It is now
+  `layout::arrangements` and both call it, so the key can never ask for an
+  arrangement the rule would not have offered.
+- `Grid::width_of` had no caller and is gone.
+- `two_up` and the card's width sums used plain `u16` addition, which panics in
+  debug on a pathological name. All saturating now.

@@ -57,3 +57,11 @@ only row that fits.
 A partial party keeps its colours and its highlight, and the status line says
 how many are shown. It is not the same thing as a lost one and does not look
 like one.
+
+## Review, answered
+
+"Restores full brightness with no flicker" was ticked with nothing testing it.
+`losing_and_recovering_the_anchor_dims_and_undims_the_same_party` in
+`tests/hud_keys.rs` now asserts that the recovered frame equals the frame from
+before the anchor was lost, character for character, which is what no flicker
+means when the drawing is a redraw of a plan.

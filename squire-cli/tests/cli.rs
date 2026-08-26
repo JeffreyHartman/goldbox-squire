@@ -340,5 +340,16 @@ fn the_usage_says_where_the_window_size_is_remembered() {
     // A remembered thing the user cannot find is a hidden behaviour.
     assert!(squire_cli::args::USAGE.contains("[hud]"));
     assert!(squire_cli::args::USAGE.contains("--plain"));
-    assert!(squire_cli::args::USAGE.contains("q quits"));
+    for key in [
+        "q, Escape or Ctrl-C quits",
+        "up and down",
+        "a\nshows",
+        "c changes",
+        "Enter picks",
+    ] {
+        assert!(
+            squire_cli::args::USAGE.contains(key),
+            "{key} is undocumented"
+        );
+    }
 }

@@ -61,3 +61,15 @@ a line exactly as it always has, and the HUD takes the terminal back
 afterwards, whether the wizard succeeded or failed. That is far less code than
 a second copy of the menu drawn on screen, and it keeps one wizard rather than
 two that can disagree about what a save slot is.
+
+## Review, answered
+
+The keys were only half documented: the status line omitted the arrows and
+`--help` omitted Escape and Ctrl-C. Both list the whole set now, and a test
+checks `--help` against it.
+
+The HUD half of the repick had no test, because it needed a terminal. It does
+not any more: `hud::view::View` holds everything a key changes and
+`tests/hud_keys.rs` drives it directly. Sixteen tests cover quitting, both ends
+of the highlight, a party that shrank underneath it, both toggles, the reserved
+number keys, and a retarget clearing the old slot's party.

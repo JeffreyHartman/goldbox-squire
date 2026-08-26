@@ -85,9 +85,9 @@ OPTIONS:
                        the supported path and needs no system change.
     -h, --help         Print this text.
 
-In the HUD: q quits, up and down move the highlight, a shows the ability
-scores, c changes how many cards sit across, and Enter picks a different save
-slot. The size you leave the window at is remembered in gbs's config file,
+In the HUD: q, Escape or Ctrl-C quits, up and down move the highlight, a
+shows the ability scores, c changes how many cards sit across, and Enter picks
+a different save slot. The size you leave the window at is remembered in gbs's config file,
 under [hud], and used next time.
 
 Emulator settings live in a per-game file gbs creates in its config folder

@@ -44,14 +44,18 @@ pub fn draw(area: Rect, buf: &mut Buffer, plan: &Plan, party: &Party, selected: 
     };
     cards(area, buf, plan, grid, party, selected);
 
+    // The plan was made for the size the terminal last reported, and a resize
+    // can land between that question and this draw. So the room is measured
+    // again here rather than trusted, and a wordmark that no longer fits is
+    // simply not drawn.
     if plan.wordmark {
         // The room going spare, and nowhere else. What is left below is where
         // a map or a journal will live, if they ever do.
         let spare = area.height.saturating_sub(2).saturating_sub(grid.rows());
-        let top = 1 + grid.rows() + (spare - layout::WORDMARK_ROWS) / 2;
+        let top = 1 + grid.rows() + spare.saturating_sub(layout::WORDMARK_ROWS) / 2;
         for (i, line) in layout::wordmark().iter().enumerate() {
             let width = u16::try_from(line.chars().count()).unwrap_or(u16::MAX);
-            let x = (area.width - width) / 2;
+            let x = area.width.saturating_sub(width) / 2;
             let y = top + u16::try_from(i).unwrap_or(0);
             put(area, buf, x, y, line, Style::default().fg(theme::GOLD));
         }

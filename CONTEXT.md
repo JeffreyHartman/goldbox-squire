@@ -133,6 +133,17 @@ disagree about how much is shown and never about what matters.
 a question the rules answer, not a measurement. What is roomy for a party panel
 alone is cramped for the same panel beside a map.
 
+**Caption.** The words that say which run is on screen: the game, the save
+slot, the panel, and the watch's latest word. The layout plan fits them to the
+header and to the status line. Not a sitting, which is what the wizard
+resolved.
+
+**Liveness.** What the HUD says about the numbers on screen. Live and partial
+are the party state as the session reports it. The session's not-found splits
+in two here, because the two need different words: **waiting** is a run that
+has never found a party, and **lost** is one that had a party and lost the
+anchor. Only lost dims.
+
 **Wordmark.** Squire's name drawn large. It appears only when the size is roomy,
 because a HUD that reminds you what it is called is spending rows that the party
 wants.

@@ -69,19 +69,19 @@ impl Install {
 /// not of which game they loaded, and a per-game key would mean fixing twelve
 /// entries after changing a monitor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Hud {
+pub struct WindowSize {
     pub columns: u16,
     pub rows: u16,
 }
 
-impl Hud {
+impl WindowSize {
     /// Whether the stored size could be a window.
     ///
     /// A zero is what a terminal reports when it does not know its own size,
     /// and it reaches the file when a run ends before the first draw. It is
     /// ignored rather than fatal: a stale config file must never be a reason
     /// gbs will not start.
-    pub fn is_sane(&self) -> bool {
+    pub fn looks_like_a_window(&self) -> bool {
         self.columns > 0 && self.rows > 0
     }
 }
@@ -114,7 +114,7 @@ pub struct Config {
     /// the wizard asks about things Squire cannot observe, and this is not
     /// one of those.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub hud: Option<Hud>,
+    pub hud: Option<WindowSize>,
 }
 
 /// Every file version at once. The old keys are read so an existing user's
@@ -181,8 +181,8 @@ impl Config {
             known_games: raw.known_games,
             hud: raw
                 .hud
-                .and_then(|v| v.try_into::<Hud>().ok())
-                .filter(Hud::is_sane),
+                .and_then(|v| v.try_into::<WindowSize>().ok())
+                .filter(WindowSize::looks_like_a_window),
         };
 
         // v2: the single last choice named both the game and its directory.

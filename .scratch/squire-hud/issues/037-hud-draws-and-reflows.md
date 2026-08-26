@@ -66,3 +66,18 @@ never from the size.
 
 The terminal is restored from a `Drop` impl and from a panic hook that chains
 to the one it replaced, so an error and a panic both leave a usable shell.
+
+## Review, answered
+
+Two-axis review, 2026-08-25.
+
+- `Hud::start` could return an error with raw mode still on, because the two
+  failures between the takeover and `Inner` existing had no `Drop` to hang
+  from. Both undo the takeover by hand now.
+- `draw.rs` did plain `u16` subtraction to place the wordmark, using a plan
+  made for the size the terminal last reported. A resize landing between the
+  question and the draw underflowed it. The room is measured again at draw
+  time and a wordmark that no longer fits is not drawn.
+- The HUD's state moved out of the terminal into `hud::view::View`. The
+  terminal module now owns the terminal and nothing else, and the keyboard
+  contract is tested with no terminal at all.

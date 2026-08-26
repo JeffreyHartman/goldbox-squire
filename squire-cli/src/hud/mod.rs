@@ -8,11 +8,14 @@
 //! share one [`Inner`] through an `Rc<RefCell<_>>` for exactly that reason and
 //! for no other.
 //!
-//! Nothing here decides what is shown. That is [`crate::layout`]'s job, and
-//! [`draw`] draws its answer.
+//! This file owns the terminal and nothing else. What the HUD knows is
+//! [`View`], which has no terminal in it and is where the keyboard contract is
+//! tested. What is shown is [`crate::layout`]'s decision, and [`draw`] draws
+//! its answer.
 
 pub mod draw;
 pub mod theme;
+pub mod view;
 
 use std::cell::RefCell;
 use std::io::{self, Stdout, Write};
@@ -20,7 +23,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{self, Event, KeyEventKind};
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
@@ -29,31 +32,20 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
 use squire_core::games;
-use squire_core::record::Character;
-use squire_core::session::{Party, PartyState};
+use squire_core::session::Party;
 
-use crate::layout::{self, Sitting, Size, Toggles};
+use crate::layout::{Caption, Size};
 use crate::watch::{Interrupt, Keys, Screen};
 use crate::wizard;
 
-/// The panels the number keys are reserved for. Only the first exists; the
-/// rest are a promise that the second one will not need a menu built for it.
-const PANELS: [&str; 1] = ["party"];
+pub use view::{Press, View};
 
-/// Everything the HUD holds between polls.
+/// The terminal, and what is drawn on it.
 struct Inner {
     terminal: Terminal<CrosstermBackend<Stdout>>,
-    /// The last characters read. Kept when the anchor is lost, because a
-    /// rescan takes a moment and the last known values are still worth
-    /// something. They are shown dimmed, never as live.
-    characters: Vec<Character>,
-    state: PartyState,
-    sitting: Sitting,
-    toggles: Toggles,
-    /// Which character the highlight sits on.
-    selected: usize,
-    /// The size of the last draw, so that the run can remember where the
-    /// user put the window.
+    view: View,
+    /// The size of the last draw, so that the run can remember where the user
+    /// put the window.
     size: Size,
 }
 
@@ -67,12 +59,9 @@ impl Inner {
             cols: area.width,
             rows: area.height,
         };
-        let party = Party {
-            state: self.state,
-            characters: self.characters.clone(),
-        };
-        let plan = layout::plan(self.size, &party, &self.sitting, self.toggles);
-        let selected = self.selected;
+        let plan = self.view.plan(self.size);
+        let party = self.view.party();
+        let selected = self.view.selected();
         self.terminal
             .draw(|frame| {
                 let area = frame.area();
@@ -111,11 +100,18 @@ pub struct Hud {
 
 impl Hud {
     /// Takes over the terminal and draws the first, empty, frame.
-    pub fn start(sitting: Sitting, remembered: Option<Size>) -> Result<Hud, String> {
+    ///
+    /// Every failure between raw mode going on and `Inner` existing undoes the
+    /// takeover by hand: there is no value yet for `Drop` to hang from, and
+    /// returning an error into a shell with no echo is the worst outcome this
+    /// function has.
+    pub fn start(caption: Caption, remembered: Option<Size>) -> Result<Hud, String> {
         enable_raw_mode().map_err(|e| format!("putting the terminal in raw mode: {e}"))?;
         let mut out = io::stdout();
-        execute!(out, EnterAlternateScreen, crossterm::cursor::Hide)
-            .map_err(|e| format!("taking over the terminal: {e}"))?;
+        if let Err(e) = execute!(out, EnterAlternateScreen, crossterm::cursor::Hide) {
+            restore();
+            return Err(format!("taking over the terminal: {e}"));
+        }
 
         // A panic past this point would otherwise leave the shell in raw mode
         // with no echo. The old hook still runs, so the message is not lost.
@@ -125,15 +121,16 @@ impl Hud {
             previous(info);
         }));
 
-        let terminal = Terminal::new(CrosstermBackend::new(out))
-            .map_err(|e| format!("starting the interface: {e}"))?;
+        let terminal = match Terminal::new(CrosstermBackend::new(out)) {
+            Ok(terminal) => terminal,
+            Err(e) => {
+                restore();
+                return Err(format!("starting the interface: {e}"));
+            }
+        };
         let inner = Inner {
             terminal,
-            characters: Vec::new(),
-            state: PartyState::NotFound,
-            sitting,
-            toggles: Toggles::default(),
-            selected: 0,
+            view: View::new(caption),
             // Replaced by the first draw. The remembered size is what the
             // window was asked for, not what it got, so it is never trusted
             // as the size to draw at.
@@ -180,16 +177,7 @@ pub struct HudScreen {
 impl Screen for HudScreen {
     fn party(&mut self, party: &Party) {
         let mut inner = self.inner.borrow_mut();
-        inner.state = party.state;
-        if !party.characters.is_empty() {
-            inner.characters = party.characters.clone();
-            // The loop's last word was about finding the party. It has been
-            // found, so the words go and the status line speaks for itself.
-            inner.sitting.note = None;
-        }
-        if inner.selected >= inner.characters.len() {
-            inner.selected = inner.characters.len().saturating_sub(1);
-        }
+        inner.view.saw(party);
         // A failed draw is not worth ending a run over: the next poll draws
         // again, and the loop is what notices a terminal that has really gone.
         let _ = inner.redraw();
@@ -197,7 +185,7 @@ impl Screen for HudScreen {
 
     fn notice(&mut self, message: &str) {
         let mut inner = self.inner.borrow_mut();
-        inner.sitting.note = Some(message.to_string());
+        inner.view.note(message);
         let _ = inner.redraw();
     }
 }
@@ -221,8 +209,16 @@ impl Keys for HudKeys {
             let event = event::read().map_err(|e| format!("reading the keyboard: {e}"))?;
             match event {
                 Event::Key(key) if key.kind == KeyEventKind::Press => {
-                    if let Some(interrupt) = self.press(key.code, key.modifiers)? {
-                        return Ok(interrupt);
+                    let press = {
+                        let mut inner = self.inner.borrow_mut();
+                        let press = inner.view.press(key.code, key.modifiers);
+                        let _ = inner.redraw();
+                        press
+                    };
+                    match press {
+                        Press::Quit => return Ok(Interrupt::Quit),
+                        Press::AskForSlot => return self.repick(),
+                        Press::Handled => {}
                     }
                 }
                 // The window changed size. Reflow now rather than at the next
@@ -240,67 +236,6 @@ impl Keys for HudKeys {
 }
 
 impl HudKeys {
-    /// One keypress. `None` means it was handled and the pause carries on.
-    fn press(
-        &mut self,
-        code: KeyCode,
-        modifiers: KeyModifiers,
-    ) -> Result<Option<Interrupt>, String> {
-        if modifiers.contains(KeyModifiers::CONTROL) && code == KeyCode::Char('c') {
-            return Ok(Some(Interrupt::Quit));
-        }
-        match code {
-            KeyCode::Char('q') | KeyCode::Esc => return Ok(Some(Interrupt::Quit)),
-            KeyCode::Enter => return self.repick().map(Some),
-            KeyCode::Up | KeyCode::Char('k') => self.move_highlight(-1),
-            KeyCode::Down | KeyCode::Char('j') => self.move_highlight(1),
-            KeyCode::Char('a') => {
-                let mut inner = self.inner.borrow_mut();
-                inner.toggles.abilities = !inner.toggles.abilities;
-                let _ = inner.redraw();
-            }
-            KeyCode::Char('c') => self.cycle_columns(),
-            KeyCode::Char(digit @ '1'..='9') => {
-                // Reserved. Only one panel exists, so every other number is a
-                // key that has not grown its screen yet.
-                let wanted = usize::from(digit as u8 - b'1');
-                if let Some(panel) = PANELS.get(wanted) {
-                    let mut inner = self.inner.borrow_mut();
-                    inner.sitting.panel = (*panel).to_string();
-                    let _ = inner.redraw();
-                }
-            }
-            _ => {}
-        }
-        Ok(None)
-    }
-
-    /// Moves the highlight, and stops at each end rather than wrapping. A HUD
-    /// glanced at sideways should not move the highlight somewhere surprising.
-    fn move_highlight(&mut self, by: i32) {
-        let mut inner = self.inner.borrow_mut();
-        let last = inner.characters.len().saturating_sub(1);
-        let next = i64::from(by) + inner.selected as i64;
-        inner.selected = next.clamp(0, last as i64) as usize;
-        let _ = inner.redraw();
-    }
-
-    /// Steps through the arrangements the party divides into evenly, and then
-    /// back to letting the rule decide.
-    ///
-    /// This is what keeps both of 034's answers for a short wide window: the
-    /// rule picks three across, and this asks for six.
-    fn cycle_columns(&mut self) {
-        let mut inner = self.inner.borrow_mut();
-        let n = u16::try_from(inner.characters.len()).unwrap_or(0);
-        let even: Vec<u16> = (1..=n).filter(|across| n % across == 0).collect();
-        inner.toggles.across = match inner.toggles.across {
-            None => even.first().copied(),
-            Some(current) => even.iter().copied().find(|a| *a > current),
-        };
-        let _ = inner.redraw();
-    }
-
     /// The slot repick, which is the one place the HUD could quietly lose a
     /// feature the printed front end had.
     ///
@@ -319,18 +254,15 @@ impl HudKeys {
         // failed, or the error message lands on a screen nobody can read.
         let resumed = resume();
         let mut inner = self.inner.borrow_mut();
+        if let Ok(Some((slot, _))) = &picked {
+            inner.view.retargeted(*slot);
+        }
         let _ = inner.terminal.clear();
         let _ = inner.redraw();
         drop(inner);
         resumed?;
         Ok(match picked? {
-            Some((slot, names)) => {
-                let mut inner = self.inner.borrow_mut();
-                inner.sitting.slot = Some(slot);
-                inner.characters.clear();
-                inner.selected = 0;
-                Interrupt::Repick { slot, names }
-            }
+            Some((slot, names)) => Interrupt::Repick { slot, names },
             None => Interrupt::None,
         })
     }

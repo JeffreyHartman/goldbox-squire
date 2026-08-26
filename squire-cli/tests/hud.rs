@@ -9,7 +9,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
 use squire_cli::hud::{draw, theme};
-use squire_cli::layout::{self, Sitting, Size, Toggles};
+use squire_cli::layout::{self, Caption, Size, Toggles};
 use squire_core::record::Character;
 use squire_core::session::{Party, PartyState};
 
@@ -63,8 +63,8 @@ fn who(
     }
 }
 
-fn sitting() -> Sitting {
-    Sitting {
+fn caption() -> Caption {
+    Caption {
         game: "Pool of Radiance".into(),
         slot: Some('J'),
         panel: "party".into(),
@@ -76,7 +76,7 @@ fn sitting() -> Sitting {
 fn screen(cols: u16, rows: u16, party: &Party, selected: usize) -> Buffer {
     let area = Rect::new(0, 0, cols, rows);
     let mut buf = Buffer::empty(area);
-    let plan = layout::plan(Size { cols, rows }, party, &sitting(), Toggles::default());
+    let plan = layout::plan(Size { cols, rows }, party, &caption(), Toggles::default());
     draw::draw(area, &mut buf, &plan, party, selected);
     buf
 }
@@ -213,7 +213,7 @@ fn a_lost_anchor_greys_the_party_and_keeps_the_numbers() {
             rows: 50,
         },
         &lost,
-        &sitting(),
+        &caption(),
         Toggles::default(),
     );
     let block = plan.grid.as_ref().unwrap().rows();

@@ -7,10 +7,10 @@ use std::time::Duration;
 use squire_cli::args::{Args, USAGE};
 use squire_cli::attach;
 use squire_cli::conf;
-use squire_cli::config::{Config, Hud as HudSize};
+use squire_cli::config::{Config, WindowSize};
 use squire_cli::hud;
 use squire_cli::keys;
-use squire_cli::layout::{Sitting, Size};
+use squire_cli::layout::{Caption, Size};
 use squire_cli::manual;
 use squire_cli::output;
 use squire_cli::watch::{self, Watch};
@@ -52,16 +52,13 @@ fn run() -> Result<(), String> {
             game.table.clone(),
             resolved.names.clone(),
         );
-        return run_watch(
-            &mut session,
-            &args,
-            &game,
-            None,
-            Some(resolved.slot),
-            resolved.names,
-            None,
-            &mut config,
-        );
+        let watching = Watching {
+            game,
+            slot: Some(resolved.slot),
+            names: resolved.names,
+            save_dir: None,
+        };
+        return run_watch(&mut session, &args, &watching, None, &mut config);
     }
 
     // Find the user's installs, once. A normal run reads the cached results;
@@ -174,15 +171,17 @@ fn run() -> Result<(), String> {
     // The repick folder is the install's own save folder: for a designs game
     // that is the game folder, and repicking asks the design again, so a
     // fresh install's first save is reachable mid-watch.
-    let repick_dir = install.save_dir();
+    let watching = Watching {
+        game,
+        slot,
+        names,
+        save_dir: Some(install.save_dir()),
+    };
     run_watch(
         &mut session,
         &args,
-        &game,
+        &watching,
         Some(&mut running),
-        slot,
-        names,
-        Some(&repick_dir),
         &mut config,
     )
 }
@@ -193,17 +192,20 @@ fn run() -> Result<(), String> {
 /// already argues that an argument required to make the program work is not
 /// an argument, which is why there is no `--watch`; the same reasoning makes
 /// the HUD the default rather than a `--tui` opt-in.
-#[allow(clippy::too_many_arguments)]
 fn run_watch<R: squire_core::mem::Reader>(
     session: &mut Session<R>,
     args: &Args,
-    game: &games::Game,
+    watching: &Watching,
     running: Option<&mut squire_core::launch::Launched>,
-    slot: Option<char>,
-    names: Vec<String>,
-    save_dir: Option<&Path>,
     config: &mut Config,
 ) -> Result<(), String> {
+    let Watching {
+        game,
+        slot,
+        names,
+        save_dir,
+    } = watching;
+    let (slot, names, save_dir) = (*slot, names.clone(), save_dir.as_deref());
     let timing = Watch {
         interval: Duration::from_millis(args.interval_ms),
         ..Watch::default()
@@ -232,7 +234,7 @@ fn run_watch<R: squire_core::mem::Reader>(
         );
     }
 
-    let sitting = Sitting {
+    let caption = Caption {
         game: game.name.clone(),
         slot,
         panel: "party".to_string(),
@@ -242,7 +244,7 @@ fn run_watch<R: squire_core::mem::Reader>(
         cols: h.columns,
         rows: h.rows,
     });
-    let interface = hud::Hud::start(sitting, remembered)?;
+    let interface = hud::Hud::start(caption, remembered)?;
     let mut screen = interface.screen();
     let mut keys = interface.keys(game, save_dir);
     let outcome = watch::watch(
@@ -258,10 +260,29 @@ fn run_watch<R: squire_core::mem::Reader>(
     // Recorded on the way out, whether the run ended well or badly: the user
     // resized the window either way, and losing that over an error would mean
     // resizing it again next launch.
+    // Read before the terminal goes back, written after: a warning printed
+    // onto the alternate screen is a warning nobody can read.
     let size = interface.size();
-    remember_size(config, size);
     drop(interface);
+    remember_size(config, size);
     outcome
+}
+
+/// What one watch is pointed at.
+///
+/// These four travel together everywhere below the wizard, and the `--pid`
+/// path fills the same four from a different source. One type rather than one
+/// long parameter list.
+struct Watching {
+    game: games::Game,
+    /// The save slot, when one has been picked. A fresh install has none until
+    /// the user saves in game and repicks mid-watch.
+    slot: Option<char>,
+    /// The character names to look for, taken from the save files.
+    names: Vec<String>,
+    /// The install's own save folder, which is where a repick starts looking.
+    /// `None` on the `--pid` path, which never started a game.
+    save_dir: Option<PathBuf>,
 }
 
 /// Writes the size the HUD was left at into the config.
@@ -269,11 +290,11 @@ fn run_watch<R: squire_core::mem::Reader>(
 /// A size of zero is what a terminal reports when it does not know its own,
 /// and it is not worth writing down.
 fn remember_size(config: &mut Config, size: Size) {
-    let hud = HudSize {
+    let hud = WindowSize {
         columns: size.cols,
         rows: size.rows,
     };
-    if !hud.is_sane() || config.hud == Some(hud) {
+    if !hud.looks_like_a_window() || config.hud == Some(hud) {
         return;
     }
     config.hud = Some(hud);

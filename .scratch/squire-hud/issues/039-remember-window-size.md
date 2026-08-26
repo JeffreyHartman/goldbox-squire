@@ -49,3 +49,9 @@ whole file. `--help` says where the size lives.
 
 Nothing acts on the remembered size yet. A program cannot resize the terminal
 it was launched inside, which is 043's job.
+
+## Review, answered
+
+The warning about a config that could not be saved was printed while the
+alternate screen was still up, which is a warning nobody can read. The size is
+now read before the terminal goes back and written after.
