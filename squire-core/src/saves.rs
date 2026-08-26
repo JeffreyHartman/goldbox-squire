@@ -95,7 +95,10 @@ pub fn slot_party_records(
 /// parses. The game's own bookkeeping files are deliberately not required: a
 /// slot missing them still holds readable characters, and refusing it would
 /// be guessing.
-pub fn populated_slots(game: &Game, save_dir: impl AsRef<Path>) -> Result<Vec<PopulatedSlot>, Error> {
+pub fn populated_slots(
+    game: &Game,
+    save_dir: impl AsRef<Path>,
+) -> Result<Vec<PopulatedSlot>, Error> {
     let files = save_files(save_dir.as_ref())?;
 
     let slots: Vec<PopulatedSlot> = SLOT_LETTERS
@@ -187,11 +190,7 @@ pub fn designs(game: &Game, game_dir: impl AsRef<Path>) -> Result<Vec<Design>, E
 /// The design with this name, matched case-insensitively, among the designs
 /// holding a saved game. The error names the ones that do, so a typo's
 /// message is also the answer.
-pub fn design_named(
-    game: &Game,
-    game_dir: impl AsRef<Path>,
-    name: &str,
-) -> Result<Design, Error> {
+pub fn design_named(game: &Game, game_dir: impl AsRef<Path>, name: &str) -> Result<Design, Error> {
     let designs = designs(game, game_dir)?;
     designs
         .iter()
@@ -388,10 +387,7 @@ fn newest_save(game: &Game, files: &HashMap<String, PathBuf>) -> SystemTime {
 fn dir_named(dir: &Path, name: &str) -> Option<PathBuf> {
     std::fs::read_dir(dir).ok()?.flatten().find_map(|entry| {
         let path = entry.path();
-        let matches = path
-            .file_name()?
-            .to_str()?
-            .eq_ignore_ascii_case(name);
+        let matches = path.file_name()?.to_str()?.eq_ignore_ascii_case(name);
         (matches && path.is_dir()).then_some(path)
     })
 }

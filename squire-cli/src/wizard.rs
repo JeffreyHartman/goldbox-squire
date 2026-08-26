@@ -343,10 +343,7 @@ fn ask_design<R: BufRead, W: Write>(
         for (n, design) in designs.iter().enumerate() {
             writeln!(e, "  {}. {}", n + 1, design.name)?;
         }
-        write!(
-            e,
-            "Press Enter for 1, type a number, or 0 to go back: "
-        )?;
+        write!(e, "Press Enter for 1, type a number, or 0 to go back: ")?;
         e.flush()
     };
     say(output).map_err(|e| e.to_string())?;
@@ -429,7 +426,11 @@ fn ask_dir<R: BufRead, W: Write>(
         }
         writeln!(e, "  {elsewhere}. Somewhere else (type a path)")?;
         match default {
-            Some(d) => write!(e, "Press Enter for {}, type a number, or 0 to go back: ", d + 1),
+            Some(d) => write!(
+                e,
+                "Press Enter for {}, type a number, or 0 to go back: ",
+                d + 1
+            ),
             None => write!(e, "Type a number, or 0 to go back: "),
         }?;
         e.flush()
@@ -445,9 +446,13 @@ fn ask_dir<R: BufRead, W: Write>(
             }
             Choice::Number(_) => {
                 // The typed path. A bad one is explained and asked again.
-                write!(output, "Path to the game's {} folder (0 goes back): ", game.game_folder)
-                    .and_then(|_| output.flush())
-                    .map_err(|e| e.to_string())?;
+                write!(
+                    output,
+                    "Path to the game's {} folder (0 goes back): ",
+                    game.game_folder
+                )
+                .and_then(|_| output.flush())
+                .map_err(|e| e.to_string())?;
                 loop {
                     let line = read_line(input)?;
                     let line = line.trim();

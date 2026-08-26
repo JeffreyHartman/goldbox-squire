@@ -6,6 +6,7 @@ pub mod conf;
 pub mod config;
 pub mod emulator;
 pub mod keys;
+pub mod layout;
 pub mod manual;
 pub mod output;
 pub mod terminals;

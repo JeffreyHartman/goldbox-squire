@@ -35,7 +35,10 @@ fn watch_is_not_a_flag_because_watching_is_what_the_tool_does() {
     let err = parse(&["--watch"]).unwrap_err();
 
     assert!(err.contains("--watch"), "got: {err}");
-    assert!(err.contains("--help"), "the error points at the usage: {err}");
+    assert!(
+        err.contains("--help"),
+        "the error points at the usage: {err}"
+    );
 }
 
 #[test]

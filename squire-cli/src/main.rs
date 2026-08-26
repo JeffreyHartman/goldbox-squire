@@ -66,8 +66,7 @@ fn run() -> Result<(), String> {
     // this build knows games the last scan did not look for. Finding nothing
     // is not fatal: the wizard's directory question takes a typed path.
     let game_ids: Vec<String> = games::games().into_iter().map(|g| g.id).collect();
-    if config.installs.is_empty() || config.needs_rediscovery() || config.known_games != game_ids
-    {
+    if config.installs.is_empty() || config.needs_rediscovery() || config.known_games != game_ids {
         let mut roots = squire_core::discover::default_roots();
         roots.extend(config.extra_roots.iter().map(PathBuf::from));
         let remembered = config.installs.clone();

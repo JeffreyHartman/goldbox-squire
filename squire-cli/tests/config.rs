@@ -65,7 +65,10 @@ fn a_v2_config_migrates_the_last_choice_to_a_chosen_directory() {
         Some("gog:pool-of-radiance")
     );
     assert_eq!(config.installs.len(), 2);
-    assert_eq!(config.installs["manual:pool-of-radiance"].root, "/hand/POOLRAD");
+    assert_eq!(
+        config.installs["manual:pool-of-radiance"].root,
+        "/hand/POOLRAD"
+    );
 }
 
 #[test]
@@ -192,7 +195,11 @@ fn a_manual_directory_a_discovered_install_also_names_is_dropped() {
         .installs
         .values()
         .any(|i| i.kind == InstallKind::Manual);
-    assert!(!manual_left, "{:?}", config.installs.keys().collect::<Vec<_>>());
+    assert!(
+        !manual_left,
+        "{:?}",
+        config.installs.keys().collect::<Vec<_>>()
+    );
 }
 
 #[test]

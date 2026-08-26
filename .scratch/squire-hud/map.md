@@ -128,6 +128,12 @@ Settled in the grilling session of 2026-08-25, before any code.
   and what goes before the command. A user file in Squire's config folder is
   merged over it by name. See `issues/042-terminal-table.md`.
 
+- **The layout plan is a pure function, and it is written.** Rows, columns, a
+  party and the toggles go in; a `Plan` comes out, saying what each card holds,
+  where the cards go, whether the wordmark is drawn and whether the party
+  dims. 034's seven recorded sizes are pinned as tests. See
+  `issues/036-layout-plan.md`.
+
 ## Not yet specified
 
 - **What the roomy sizes hold.** Map, journal and combat were tabs in the

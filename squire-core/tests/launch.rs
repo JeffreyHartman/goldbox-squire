@@ -178,7 +178,12 @@ fn each_conf_is_passed_in_order() {
     assert_eq!(
         e.args(),
         &[
-            "-conf", "base.conf", "-conf", "graphics.conf", "-conf", "game.conf"
+            "-conf",
+            "base.conf",
+            "-conf",
+            "graphics.conf",
+            "-conf",
+            "game.conf"
         ]
     );
 }

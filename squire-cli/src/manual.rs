@@ -67,10 +67,7 @@ fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
     }
     std::fs::read_dir(dir).ok()?.flatten().find_map(|entry| {
         let path = entry.path();
-        let matches = path
-            .file_name()?
-            .to_str()?
-            .eq_ignore_ascii_case(name);
+        let matches = path.file_name()?.to_str()?.eq_ignore_ascii_case(name);
         (matches && path.is_file()).then_some(path)
     })
 }

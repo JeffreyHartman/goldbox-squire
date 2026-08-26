@@ -237,7 +237,11 @@ fn find_saves(dirs: &[PathBuf], root: &Path, game: &games::Game) -> Option<PathB
             continue;
         }
         if let Some(within) = saves_within(dir, game) {
-            return dir.join(within).strip_prefix(root).ok().map(Path::to_path_buf);
+            return dir
+                .join(within)
+                .strip_prefix(root)
+                .ok()
+                .map(Path::to_path_buf);
         }
     }
     None
@@ -317,4 +321,3 @@ fn holds_designs(dir: &Path, game: &games::Game) -> bool {
             })
     })
 }
-

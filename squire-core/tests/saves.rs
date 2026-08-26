@@ -18,7 +18,7 @@ fn frua() -> games::Game {
 
 #[test]
 fn reads_slot_a_from_a_real_game_folder() {
-    let party = saves::slot_party_names(&por(),common::fixture_dir(), 'A').unwrap();
+    let party = saves::slot_party_names(&por(), common::fixture_dir(), 'A').unwrap();
 
     assert_eq!(
         party,
@@ -43,7 +43,7 @@ fn reads_slot_j_when_a_and_j_are_populated() {
     write_save(&dir, 'J', 1, "SLOT J HERO");
     write_save(&dir, 'J', 2, "SLOT J FRIEND");
 
-    let party = saves::slot_party_names(&por(),&dir, 'J').unwrap();
+    let party = saves::slot_party_names(&por(), &dir, 'J').unwrap();
 
     assert_eq!(party, vec!["SLOT J HERO", "SLOT J FRIEND"]);
 }
@@ -56,7 +56,7 @@ fn the_party_is_in_marching_order() {
     write_save(&dir, 'B', 1, "FIRST");
     write_save(&dir, 'B', 2, "SECOND");
 
-    let party = saves::slot_party_names(&por(),&dir, 'B').unwrap();
+    let party = saves::slot_party_names(&por(), &dir, 'B').unwrap();
 
     assert_eq!(party, vec!["FIRST", "SECOND", "THIRD"]);
 }
@@ -71,7 +71,7 @@ fn a_slot_reads_at_most_six_characters() {
     // most any Gold Box party holds.
     write_save_named(&dir, "CHRDATA7.SAV", "IMPOSTOR");
 
-    let party = saves::slot_party_names(&por(),&dir, 'A').unwrap();
+    let party = saves::slot_party_names(&por(), &dir, 'A').unwrap();
 
     assert_eq!(party.len(), 6);
     assert!(!party.contains(&"IMPOSTOR".to_string()));
@@ -82,7 +82,7 @@ fn a_lowercase_slot_letter_is_accepted() {
     let dir = tempdir();
     write_save(&dir, 'J', 1, "HERO");
 
-    let party = saves::slot_party_names(&por(),&dir, 'j').unwrap();
+    let party = saves::slot_party_names(&por(), &dir, 'j').unwrap();
 
     assert_eq!(party, vec!["HERO"]);
 }
@@ -92,7 +92,9 @@ fn a_letter_outside_a_through_j_is_rejected() {
     let dir = tempdir();
     write_save(&dir, 'A', 1, "HERO");
 
-    let err = saves::slot_party_names(&por(),&dir, 'K').unwrap_err().to_string();
+    let err = saves::slot_party_names(&por(), &dir, 'K')
+        .unwrap_err()
+        .to_string();
 
     assert!(err.contains('K'), "the error names the bad letter: {err}");
 }
@@ -103,7 +105,9 @@ fn an_empty_slot_names_the_populated_ones() {
     write_save(&dir, 'A', 1, "HERO");
     write_save(&dir, 'J', 1, "OTHER");
 
-    let err = saves::slot_party_names(&por(),&dir, 'B').unwrap_err().to_string();
+    let err = saves::slot_party_names(&por(), &dir, 'B')
+        .unwrap_err()
+        .to_string();
 
     assert!(err.contains('B'), "the error names the empty slot: {err}");
     assert!(
@@ -158,7 +162,9 @@ fn a_missing_savgam_file_does_not_hide_a_slot() {
 fn a_folder_with_no_saves_enumerates_to_a_clear_error() {
     let dir = tempdir();
 
-    let err = saves::populated_slots(&por(), &dir).unwrap_err().to_string();
+    let err = saves::populated_slots(&por(), &dir)
+        .unwrap_err()
+        .to_string();
 
     assert!(
         err.contains("CHRDAT"),
@@ -168,7 +174,7 @@ fn a_folder_with_no_saves_enumerates_to_a_clear_error() {
 
 #[test]
 fn a_folder_that_does_not_exist_is_a_clear_error() {
-    let err = saves::slot_party_names(&por(),"/no/such/folder/anywhere", 'A')
+    let err = saves::slot_party_names(&por(), "/no/such/folder/anywhere", 'A')
         .unwrap_err()
         .to_string();
 
@@ -181,7 +187,7 @@ fn a_save_file_too_short_to_be_a_record_is_skipped() {
     write_save(&dir, 'A', 1, "REALCHAR");
     std::fs::write(format!("{dir}/CHRDATA2.SAV"), b"too short").unwrap();
 
-    let party = saves::slot_party_names(&por(),&dir, 'A').unwrap();
+    let party = saves::slot_party_names(&por(), &dir, 'A').unwrap();
 
     assert_eq!(party, vec!["REALCHAR"]);
 }
@@ -192,7 +198,7 @@ fn finds_saves_whatever_the_case_of_the_file_name() {
     let dir = tempdir();
     write_save_named(&dir, "chrdatj1.sav", "LOWERCASE");
 
-    let party = saves::slot_party_names(&por(),&dir, 'J').unwrap();
+    let party = saves::slot_party_names(&por(), &dir, 'J').unwrap();
 
     assert_eq!(party, vec!["LOWERCASE"]);
 }
@@ -250,7 +256,9 @@ fn a_zero_filled_savgam_is_not_a_populated_slot() {
     let dir = tempdir();
     std::fs::write(format!("{dir}/SAVGAMA.CSV"), vec![0u8; 10285]).unwrap();
 
-    let err = saves::populated_slots(&frua(), &dir).unwrap_err().to_string();
+    let err = saves::populated_slots(&frua(), &dir)
+        .unwrap_err()
+        .to_string();
 
     assert!(err.contains("no readable character"), "got: {err}");
     assert!(!err.starts_with("game folder: no SAVGAM"), "got: {err}");
