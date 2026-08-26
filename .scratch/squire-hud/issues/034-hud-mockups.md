@@ -38,6 +38,18 @@ building it before 036 rather than after.
 - [ ] Jeff has looked at them and either confirmed the drop order or changed it
 - [ ] Whatever he decides is recorded on this ticket, because 036 reads it
 
+## First pass: tables. Superseded.
+
+The first pass drew one table at four widths. Jeff's answer was that a table is
+the wrong unit: the thing on screen is a **card** per character, and the layout
+is how those cards are arranged, not how one table is squeezed. GBC does the
+same, and his own mockups make it plain. The tables are kept under `table-*.txt`
+as a fallback and nothing more.
+
+He also asked for sidecar widths the first pass did not draw, and pointed out
+that a character can carry several conditions at once, which a single status
+column cannot hold.
+
 ## Built, and waiting on Jeff
 
 `.scratch/squire-hud/mockups/`. Five grids, not four: the hostile size is drawn
@@ -56,3 +68,34 @@ plentiful and columns are not. The fourth is the one 036 turns into assertions.
 
 **The answers go here.** 036 reads this heading, not the map, and it stays
 `ready-for-human` until they are written down.
+
+## Second pass: cards
+
+`cards.py` and `cards-*.txt` in the same folder. Eight grids.
+
+**The card.** Up to five lines: name with class and level, hit points with a
+bar and armour class, one line per condition, then ability scores. It drops
+lines from the bottom as it shrinks. Whether class shares the name line, and
+whether the ability line is long or short, is decided once for the whole party
+so that no card is shaped differently from its neighbours.
+
+**The layout.** Six cards, one across, two, three, or six. The rule picks the
+number across that gets each card closest to the width it wants to hold
+everything, and rows are a hard limit. There is no strip mode and no sidecar
+mode; those are what the ends of the range look like.
+
+**Conditions.** Squire reads one status byte today, so the mockups show one
+condition per character. The card holds a list, one line each, sitting above
+the ability line so that when the effects read lands the ability scores are
+what falls off a crowded card rather than the thing hurting you. The README
+shows what a card with four conditions looks like.
+
+**Sidecar widths.** 50, 60 and 80 are drawn. 60 is the first width where the
+full ability line fits, and my suggestion for the size Squire remembers on a
+first run.
+
+Four questions are left in the README: whether cards are right at all, the
+sidecar width, six across against three across two down at 160x14, and whether
+to keep the wordmark.
+
+**The answers still go under this heading.** 036 reads it, not the map.

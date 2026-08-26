@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Draws the party panel at four sizes, as exact character grids.
+"""Draws the party as a TABLE, at four sizes, as exact character grids.
+
+Kept as the second option. The card layout in `cards.py` is the one Jeff asked
+for; this is here so the two can be compared and so that nothing is lost if the
+cards turn out worse than they look.
 
 Each file it writes is exactly its stated rows by its stated columns and holds
 nothing else, so it can be `cat` into a terminal of that size without wrapping
@@ -250,7 +254,7 @@ def main():
         # Nothing but the grid goes in the file. A caption line would wrap in
         # a terminal sized to the mockup, and a wrapped caption makes an exact
         # grid look like a broken one. The captions live in README.md.
-        (here / f"{cols}x{rows}-{label}.txt").write_text("\n".join(grid) + "\n")
+        (here / f"table-{cols}x{rows}-{label}.txt").write_text("\n".join(grid) + "\n")
         print(f"{label}: {shown}{' + wordmark' if roomy else ''}")
 
 

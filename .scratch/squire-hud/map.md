@@ -58,6 +58,15 @@ Settled in the grilling session of 2026-08-25, before any code.
   and nothing else. Roomy is where a map or a journal will live, if they ever
   do. Pretending one content model reflows into every size gives every panel a
   cramped mode nobody wants to read.
+- **The unit is a card, not a table row.** Settled after the first mockups.
+  One card per character, and the layout is how six cards are arranged: one
+  across, two, three, or six, by a rule that asks how wide a card wants to be.
+  A single table stretched to every width was the same table everywhere, which
+  is what the sizes were supposed to stop. GBC's own overlay is six cards.
+- **A character can carry several conditions at once.** The card holds a list,
+  one line each, above the ability scores. Squire reads one status byte today,
+  so the list has one item; the effects read fills it later without changing
+  the card.
 - **Drop order, last to go first**: name, current and maximum hit points,
   status, class, level, armor class, ability scores. Status ranks high because
   a silent `poisoned` is the thing you most want to notice without looking away

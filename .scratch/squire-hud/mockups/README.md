@@ -1,93 +1,122 @@
-# Mockups: the party at four sizes
+# Mockups: the party as cards
 
 Ticket 034. These are character grids, not pictures of them. Each file holds
 the grid and nothing else: exactly the rows it names, each exactly the columns
-it names, no caption and no ruler. A caption would wrap in a terminal sized to
-the mockup, and a wrapped caption makes an exact grid look like a broken one.
+it names, no caption and no ruler.
 
 ## How to look at them
 
 Resize a terminal to the stated size and `cat` the file into it. It should fill
 the window with nothing wrapped and nothing scrolled off the top.
 
-    awk '{print length}' 110x50-tall.txt | sort -u
+    awk '{print length}' cards-110x50-tall.txt | sort -u
 
-That prints one number, and the number is the width. It is the check that these
-are grids rather than pictures of grids.
+That prints one number, and the number is the width.
 
-The five files:
+## The card
 
-| File | Size | What survived |
+One card per character. The card is the unit, not a row in a table. A card
+holds up to five lines, and it drops them from the bottom as it shrinks:
+
+    THRENDER GRONE                     fighter · lvl 5     <- name, class, level
+    hp 42/42 ████████████                         ac 2     <- hit points, bar, armour class
+    okay                                                   <- what is on them, one line each
+    str 18 · int 9 · wis 11 · dex 16 · con 17 · cha 10     <- ability scores
+
+The class and level sit on the name line when both fit, and get their own line
+when they do not. Same for armour class and the hit point line. The bar is
+dropped rather than drawn four cells wide, because a bar that short never
+visibly moves.
+
+Two things are decided for the whole party rather than per card. Whether the
+class sits on the name line, and whether the ability line is the long form or
+`str 18 · thac0 16`. One card laid out differently because its owner has a
+short name reads as a bug.
+
+## The layout
+
+Six cards, arranged one across, two across, three across, or six across. There
+is no strip mode and no sidecar mode. The rule picks the number across that
+gets each card closest to the width it wants, and the rows are a hard limit: a
+window too short for two rows of cards gets one row of six whatever the width
+says.
+
+`sidecar` and `strip` are what the ends of that range look like. They are not
+states the code can be in.
+
+| File | Size | What the rule chose |
 | --- | --- | --- |
-| `40x20-hostile.txt` | 40x20 | name, hit points, status. Narrow, with rows to spare |
-| `40x20-hostile-cut-names.txt` | 40x20 | the same, plus class, at the cost of whole names |
-| `160x14-short-and-wide.txt` | 160x14 | everything. Above or below the DOSBox window |
-| `110x50-tall.txt` | 110x50 | everything, and the wordmark. Beside it |
-| `160x42-roomy.txt` | 160x42 | everything, and the wordmark. Room to spare |
+| `cards-40x20-hostile.txt` | 40x20 | 2 across, 3 down |
+| `cards-50x40-sidecar-50.txt` | 50x40 | 1 across, 6 down |
+| `cards-60x40-sidecar-60.txt` | 60x40 | 1 across, 6 down |
+| `cards-80x40-sidecar-80.txt` | 80x40 | 2 across, 3 down |
+| `cards-110x50-tall.txt` | 110x50 | 2 across, 3 down |
+| `cards-160x14-wide.txt` | 160x14 | 3 across, 2 down |
+| `cards-160x14-wide-forced-strip.txt` | 160x14 | 6 across, forced, for comparison |
+| `cards-160x42-roomy.txt` | 160x42 | 3 across, 2 down, and the wordmark |
 
-The sizes are scratch values chosen to span tall, roomy, short-and-wide, and
-hostile. No number in this folder belongs in the code, and 036 must not copy
-one.
+`python3 cards.py` redraws all of them.
 
-`mock.py` draws them. Change the drop order in `COLUMNS`, rerun `python3
-mock.py`, and all five redraw. It is throwaway: it is not a plan for the Rust
-module.
+## Statuses, and why the card holds a list
 
-## What the mockups assume
+You were right and it is worse than you thought.
 
-The party data is one plausible six-character party. KEIRA is wounded at 18 of
-31. DURIN STONEFOOT is poisoned. Two characters are multiclassed, because
-`fighter/mage/thief` is the longest class string the games can produce and it
-is what sets the class column's width.
+Squire reads **one** status byte per character today. One word, out of a list
+of about ten. `okay`, `poisoned`, `unconscious`, `stoned`, and so on. That is
+the only condition data in the character record.
 
-Every column is as wide as the widest value that field can ever hold. Fifteen
-for a name, eighteen for a class, eleven for `unconscious`. Those come from the
-game data, not from a screen.
+GBC's green lines (`dwarf giant bonus`, `30% sleep/charm resist`,
+`halfling poison bonus`) are not that byte. They live elsewhere in memory, in
+what the roadmap calls conditions and effects, and Squire does not read that
+place yet.
 
-## What I need you to decide
+So the card holds a **list**, one line per item, sitting between the hit point
+line and the ability line. Today the list has one item in it. When the effects
+read lands, the same card looks like this and nothing else changes:
 
-**1. The drop order.** The map settled: name, hit points, status, class, level,
-armor class, ability scores, with the name last to go. The mockups obey it. At
-40 columns that costs armor class, level, and class, in that order. Confirm it
-or reorder it.
+    DURIN STONEFOOT                    fighter · lvl 5
+    hp 38/44 ██████████░░                         ac 1
+    poisoned
+    dwarf giant bonus
+    dwarf save bonus
+    halfling poison bonus
+    str 17 · thac0 16
 
-**2. Whole names, or one more field.** At 40 columns the table has room for
-either full names or an abbreviated class column, not both. The two hostile
-files are that choice. `40x20-hostile.txt` keeps every name whole and shows
-name, hit points, and status. `40x20-hostile-cut-names.txt` cuts DURIN
-STONEFOOT to `DURIN STONEFO…` and buys back the class. I lean toward cutting
-the name, because you know your own party's names and you do not know its armor
-class, but this is exactly the sort of call that should be yours.
+That is why the effects go above the ability line rather than below it. When
+there are six of them, the ability scores are what should fall off the card,
+not the thing that is currently killing you.
 
-**3. The one-column status.** When the word does not fit, status becomes one
-glyph: `·` for okay and `!` for anything else. That is cheap and unmissable,
-and it tells you something is wrong without telling you what. The alternative
-is a glyph per status, which needs a legend you would have to learn. I would
-keep the single `!`.
+The mockups show one status each, because that is all Squire can read. Nothing
+here is drawn for data Squire does not have.
 
-**4. The roomy threshold.** My proposal, and the one 036 will encode unless you
-change it: it is roomy when every field fits, and the rows left over after the
-party block, the rule and the status line are at least as many as the party
-block itself uses, plus the wordmark's five rows and a gap. In words: roomy
-means there is a whole second panel's worth of room going spare. It names no
-monitor and no breakpoint, and it is why 160x14 gets no wordmark while 110x50
-does.
+## The table, kept
 
-**5. Centred, or stretched.** The party block is centred, and no column ever
-grows past its widest possible value. The alternative is stretching the table
-to fill the width, which at 160 columns turns `LVL` into fourteen columns of
-air. I think centring is right, but it does leave a lot of margin at 160x14.
+`table-*.txt` are the old one-table-for-everyone drawings, kept as the second
+option in case the cards turn out worse in a real terminal than they look here.
+`python3 mock.py` redraws those. `table-40x20-hostile-cut-names.txt` is the
+answer you already gave for the table: cut long names, keep the field.
 
-**6. Rows for columns, not built.** `40x20-hostile.txt` throws away eight rows
-while dropping fields for want of columns. A layout that gave each character
-two rows would fit everything at 40 columns. I did not build it, because it is
-a second shape for the party rather than a different set of fields in one
-shape, and that is a bigger decision than this ticket asked for. Say if you
-want to see it.
+## What I still need you to decide
+
+**1. Are cards right.** Compare `cards-60x40-sidecar-60.txt` against
+`table-110x50-tall.txt`. If the cards are right, the table code goes.
+
+**2. The sidecar width.** 50, 60, and 80 are drawn. 50 and 60 both give one
+column of six cards, and 60 is the first width where the full ability line
+fits. 80 flips to two columns of three, which may be a nice surprise or may be
+wrong. I would make 60 the size Squire remembers on a first run.
+
+**3. Six across, or three across two down, at 160x14.** The rule picks three
+across because that gets each card near the width it wants. Six across is what
+you drew. Both files are there. I lean toward letting the rule decide, because
+the moment somebody has a 120 column window the six-across answer breaks and
+three-across still works.
+
+**4. The wordmark, still.** It appears only in `cards-160x42-roomy.txt`, in the
+room going spare. Keep it or cut it.
 
 ## Not mocked up
 
-No map, no journal, no combat. Nothing is drawn for data Squire cannot yet
-read, which is the mistake that produced the spike's sixteen-column menu of
-placeholder tabs. In the roomy files the room to spare is left empty on
-purpose. That empty area is the point.
+No map, no journal, no combat. In `cards-160x42-roomy.txt` the room to spare is
+left empty on purpose. That empty area is where those would go, and it is the
+point.
