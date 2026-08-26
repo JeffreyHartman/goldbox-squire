@@ -152,6 +152,32 @@ moved when Lizabell grew and Beorn shrank, and Squire still read the party.
 
 Reading effects is additive work, not a rework.
 
+## What the cure does not undo
+
+Cure Disease removes the effect entries. It does not reverse what they did.
+Three saves of the same party, taken across the cure and a night's rest:
+
+| Save | State | Strength 112/113 | HP current/max |
+|---|---|---|---|
+| E | diseased | 17 / 16 | 15 / 23 |
+| F | cured | 17 / 16 | 15 / 23 |
+| G | cured, then rested | 17 / 16 | 23 / 23 |
+
+The hit points came back. Maximum HP at byte 129 was never touched, so effect
+44 drains the current total only, and rest restores it like any other damage.
+
+The strength did not. Byte 113 held 16 across the cure and the rest, and no
+FRUA spell restores it. Spell 39, Cure Disease, only removes the effects.
+Spell 102, Restoration, restores drained levels and current intelligence and
+wisdom, naming those two scores and not strength. Effect 43's damage is
+permanent.
+
+Byte 112 still holds the original 17 throughout, so the number needed to undo
+it is present in the record. The engine simply never reads it back. That was
+confirmed the hard way, by writing 17 into byte 113 of the live process and
+watching the game accept it and save it. See
+[live-memory-write.md](live-memory-write.md).
+
 ## Reproducing this
 
 In Unlimited Adventures the party file holds whole `.cch` records back to back

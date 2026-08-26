@@ -85,6 +85,12 @@ Everything above is read-only. These features write, so they need the write
 path, an "is combat running" check (GBC refuses several of these during combat),
 and more care.
 
+The write path itself is no longer in doubt. A single byte written to
+`/proc/<pid>/mem` was accepted by a running Unlimited Adventures and persisted
+through its own save, using the same permission Squire already needs to read.
+See [docs/findings/live-memory-write.md](findings/live-memory-write.md). The
+combat check is now the harder half of this section, not the easier one.
+
 1. **The Fix command.** Instantly heal the party, optionally curing level drain.
    GBC ships this for Pool of Radiance and it works in the other games too. This
    is the smallest useful write, so it is the one that proves the write path.
