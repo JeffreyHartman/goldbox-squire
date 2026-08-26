@@ -190,3 +190,53 @@ fn the_terminal_is_recognised_by_its_program_name_and_not_its_path() {
 
     assert!(terminals::find(&list, "/usr/bin/kitty").is_some());
 }
+
+#[test]
+fn one_bad_entry_does_not_take_the_good_ones_in_the_same_file_with_it() {
+    let user = r#"
+        [[terminal]]
+        name = "broken"
+        size = "not a list"
+
+        [[terminal]]
+        name = "some-terminal-from-2031"
+        app_id = ["--name={id}"]
+        size = ["--cells={cols},{rows}"]
+    "#;
+
+    let (list, problems) = terminals::merge(terminals::built_in(), user, "mine.toml");
+
+    assert_eq!(problems.len(), 1, "{problems:?}");
+    assert!(problems[0].contains("mine.toml"), "{}", problems[0]);
+    assert!(
+        problems[0].contains('1'),
+        "the entry is named: {}",
+        problems[0]
+    );
+    assert!(
+        list.iter().any(|t| t.name == "some-terminal-from-2031"),
+        "the good entry after it still took effect"
+    );
+    assert!(!list.iter().any(|t| t.name == "broken"));
+}
+
+#[test]
+fn an_entry_that_leaves_out_a_field_gets_an_empty_one_rather_than_a_refusal() {
+    // A terminal that needs no flag before the command writes no `exec`.
+    let user = r#"
+        [[terminal]]
+        name = "plain-terminal"
+        app_id = ["--name={id}"]
+        size = ["--cells={cols}x{rows}"]
+    "#;
+
+    let (list, problems) = terminals::merge(terminals::built_in(), user, "mine.toml");
+
+    assert!(problems.is_empty(), "{problems:?}");
+    let t = named(&list, "plain-terminal");
+    assert!(t.exec.is_empty());
+    assert_eq!(
+        t.command_line("gbs-hud", 80, 24, &["gbs".into()]),
+        vec!["plain-terminal", "--name=gbs-hud", "--cells=80x24", "gbs"]
+    );
+}

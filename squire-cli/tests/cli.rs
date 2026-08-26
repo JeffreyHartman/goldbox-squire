@@ -299,3 +299,26 @@ fn a_notice_is_named_and_kept_off_the_party_stream() {
     );
     assert!(out.is_empty());
 }
+
+/// A writer that has gone away, the way a closed pipe does.
+struct ClosedPipe;
+
+impl std::io::Write for ClosedPipe {
+    fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+#[should_panic(expected = "failed printing the party")]
+fn a_closed_pipe_ends_the_run_rather_than_watching_forever_in_silence() {
+    let p = party(PartyState::Live, vec![character("BAKSHI", 3, 7)]);
+    let mut err = Vec::new();
+    let mut screen = output::Plain::new(ClosedPipe, &mut err, false);
+
+    squire_cli::watch::Screen::party(&mut screen, &p);
+}

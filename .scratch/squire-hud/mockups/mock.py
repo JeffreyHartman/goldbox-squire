@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Draws the party panel at four sizes, as exact character grids.
 
+Each file it writes is exactly its stated rows by its stated columns and holds
+nothing else, so it can be `cat` into a terminal of that size without wrapping
+or scrolling. To check that, `awk '{print length}' 110x50-tall.txt | sort -u`
+prints one number.
+
 Throwaway. It exists so that changing the drop order is one edit and a rerun,
 not six hand-drawn tables. Ticket 034 asks for a decision, not for code that
 survives, and none of this is a plan for the Rust module in 036.
@@ -242,15 +247,10 @@ def main():
     for cols, rows, label, cut_names in SIZES:
         keys, roomy, grid = draw(cols, rows, label, cut_names)
         shown = ", ".join(k.rstrip("1") for k in keys)
-        head = [
-            f"{label}: {cols} columns x {rows} rows",
-            f"shown: {shown}" + ("  + wordmark" if roomy else ""),
-            "",
-            "─" * cols + "  <- exactly this wide",
-        ]
-        tail = ["─" * cols]
-        text = "\n".join(head + grid + tail) + "\n"
-        (here / f"{cols}x{rows}-{label}.txt").write_text(text)
+        # Nothing but the grid goes in the file. A caption line would wrap in
+        # a terminal sized to the mockup, and a wrapped caption makes an exact
+        # grid look like a broken one. The captions live in README.md.
+        (here / f"{cols}x{rows}-{label}.txt").write_text("\n".join(grid) + "\n")
         print(f"{label}: {shown}{' + wordmark' if roomy else ''}")
 
 

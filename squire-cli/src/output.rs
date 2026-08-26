@@ -51,10 +51,14 @@ impl<O: Write, E: Write> Screen for Plain<O, E> {
         } else {
             format!("{CLEAR}{}", table(party))
         };
-        // A dead stdout is a closed pipe, which is the reader's business and
-        // not a reason to stop watching.
-        let _ = self.out.write_all(text.as_bytes());
-        let _ = self.out.flush();
+        // A closed pipe ends the run. `gbs | head -1` used to die here,
+        // because the loop printed with `print!`, and that is what must not
+        // change: swallowing the error would leave gbs sweeping the
+        // emulator's memory forever, writing to nobody.
+        self.out
+            .write_all(text.as_bytes())
+            .and_then(|()| self.out.flush())
+            .expect("failed printing the party");
     }
 
     fn notice(&mut self, message: &str) {

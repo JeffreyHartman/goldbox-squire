@@ -54,8 +54,18 @@ Two seams, not one.
 `Alive` is a one-method trait over `Launched`, so a test can end the loop after
 a fixed number of polls.
 
-**One behaviour did change, and it is a fix.** Under `--pid`, and after stdin
+**One behaviour did change, and it is a fix.** (A second one nearly did. See
+the review note below.) Under `--pid`, and after stdin
 hit end of file, the old loop skipped the pause entirely and swept the
 emulator's memory as fast as the CPU allowed. `keys::Stdin` sleeps the interval
 when there is nobody to listen to. Nothing else moved: same output, same keys,
 same messages, same exit conditions, and no existing test was edited.
+
+## Review note
+
+The spec review caught a change I had not intended. The old loop printed with
+`print!`, which panics when the write fails, so `gbs | head -1` ended with a
+panic. The first version of `output::Plain` swallowed the error, which would
+have left `gbs` sweeping the emulator's memory forever, writing to nobody. It
+now panics on the same failure, with a test for it. Whether a closed pipe
+deserves a better death than a panic is 037's question, not this ticket's.

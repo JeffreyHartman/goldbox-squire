@@ -44,6 +44,10 @@ pub trait Keys {
     fn wait(&mut self, pause: Duration) -> Result<Interrupt, String>;
 }
 
+/// Both ways a watch ends without an error. The handle says the process went,
+/// or a read finds it gone; the user is told the same thing either way.
+const ENDED: &str = "the emulator ended. Until next time.";
+
 /// The emulator, as much of it as the loop needs.
 pub trait Alive {
     fn is_running(&mut self) -> bool;
@@ -106,7 +110,7 @@ pub fn watch<R: Reader>(
     loop {
         if let Some(r) = running.as_deref_mut() {
             if !r.is_running() {
-                screen.notice("the emulator ended. Until next time.");
+                screen.notice(ENDED);
                 return Ok(());
             }
         }
@@ -136,7 +140,7 @@ pub fn watch<R: Reader>(
             }
             // The process went away between polls: the user quit the game.
             Err(Error::NoSuchProcess { .. }) => {
-                screen.notice("the emulator ended. Until next time.");
+                screen.notice(ENDED);
                 return Ok(());
             }
             Err(e) => return Err(e.to_string()),

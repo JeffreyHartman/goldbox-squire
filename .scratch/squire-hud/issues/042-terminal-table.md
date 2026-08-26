@@ -65,3 +65,18 @@ user file entry away.
 The difference from the game tables is in `CONTEXT.md` under **Terminal table**
 and in `AGENTS.md` under "Where things are": a record table is Squire's, a
 terminal entry can be the user's.
+
+## Review note
+
+Two findings from the spec review, both fixed.
+
+A user file was read in one go, so one misspelled field threw away every other
+entry in the file, and `exec` was required even though most terminals need
+nothing there. Each block is now read on its own, missing fields default to
+empty, and a bad block names itself and its position while the blocks around it
+still take effect.
+
+`command_line`, `find` and `load` are 043's seam decided here rather than
+there. That is deliberate: the placeholders cannot be tested without something
+that substitutes them, and a table nobody can read is not data. 043 is free to
+change the shape.

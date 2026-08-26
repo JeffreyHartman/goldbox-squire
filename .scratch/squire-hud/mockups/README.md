@@ -1,26 +1,29 @@
 # Mockups: the party at four sizes
 
-Ticket 034. These are character grids, not pictures of them. Every file is
-exactly the number of rows it claims, and every row is exactly the number of
-columns it claims. The two `─` rules top and bottom mark the exact width, so a
-line that runs past them is a lie and you can see it.
+Ticket 034. These are character grids, not pictures of them. Each file holds
+the grid and nothing else: exactly the rows it names, each exactly the columns
+it names, no caption and no ruler. A caption would wrap in a terminal sized to
+the mockup, and a wrapped caption makes an exact grid look like a broken one.
 
 ## How to look at them
 
-    cat 160x42-roomy.txt
+Resize a terminal to the stated size and `cat` the file into it. It should fill
+the window with nothing wrapped and nothing scrolled off the top.
 
-Better: resize a terminal to the stated size and `cat` the file into it. The
-ruler line should end exactly at the right edge with no wrap.
+    awk '{print length}' 110x50-tall.txt | sort -u
+
+That prints one number, and the number is the width. It is the check that these
+are grids rather than pictures of grids.
 
 The five files:
 
-| File | What it is |
-| --- | --- |
-| `40x20-hostile.txt` | deliberately hostile. Narrow, with rows to spare |
-| `40x20-hostile-cut-names.txt` | the same size, answered the other way |
-| `160x14-short-and-wide.txt` | above or below the DOSBox window |
-| `110x50-tall.txt` | beside it |
-| `160x42-roomy.txt` | room to spare |
+| File | Size | What survived |
+| --- | --- | --- |
+| `40x20-hostile.txt` | 40x20 | name, hit points, status. Narrow, with rows to spare |
+| `40x20-hostile-cut-names.txt` | 40x20 | the same, plus class, at the cost of whole names |
+| `160x14-short-and-wide.txt` | 160x14 | everything. Above or below the DOSBox window |
+| `110x50-tall.txt` | 110x50 | everything, and the wordmark. Beside it |
+| `160x42-roomy.txt` | 160x42 | everything, and the wordmark. Room to spare |
 
 The sizes are scratch values chosen to span tall, roomy, short-and-wide, and
 hostile. No number in this folder belongs in the code, and 036 must not copy

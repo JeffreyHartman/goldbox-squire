@@ -1,19 +1,14 @@
 //! Which terminals Squire can open a window in, and how to ask each one.
 //!
-//! Squire needs two things from a terminal: a name it can give the window, so
-//! that a compositor rule can find it, and a size in character cells rather
-//! than pixels. Every terminal spells both differently, and there is no
-//! standard, so this is data.
+//! What the table holds and how to add a terminal is written for the user, at
+//! the top of `terminals.toml`. That file is the explanation; this one is the
+//! reading of it, and the two must not both grow prose or they will disagree.
 //!
-//! The defaults are compiled in, and a user file is merged over them by
-//! terminal name. This is the same principle as another game being a table
-//! rather than code, with one difference worth stating: a game table is ours,
-//! and a terminal entry can be theirs. Somebody's favourite terminal in five
-//! years does not exist yet, and adding it must be a file they write, not a
-//! pull request they send.
-//!
-//! A terminal that is in no table is not an error. It is launched anyway, and
-//! Squire says once that the size could not be set.
+//! The one thing worth saying here: the defaults are compiled in and the
+//! user's file is merged over them by name. That is the same principle as
+//! another game being a table rather than code, with one difference. A record
+//! table is Squire's. A terminal entry can be the user's, which is why a bad
+//! one complains and carries on rather than stopping the program.
 
 use std::path::{Path, PathBuf};
 
@@ -32,11 +27,14 @@ pub struct Terminal {
     /// The program, as it is spelled on PATH.
     pub name: String,
     /// The arguments that name the window. Uses `{id}`.
+    #[serde(default)]
     pub app_id: Vec<String>,
     /// The arguments that ask for a size in cells. Uses `{cols}` and `{rows}`.
+    #[serde(default)]
     pub size: Vec<String>,
     /// What goes between the options and the command. Some terminals need a
-    /// flag here and some need nothing.
+    /// flag here and some need nothing, so leaving it out means nothing.
+    #[serde(default)]
     pub exec: Vec<String>,
 }
 
@@ -85,6 +83,18 @@ struct File {
     terminal: Vec<Terminal>,
 }
 
+/// The user's file, read one entry at a time.
+///
+/// Each block stays raw until it is read on its own, so that one bad block
+/// names itself and the good blocks around it still take effect. Reading the
+/// file into `Vec<Terminal>` in one go would throw away a whole file over one
+/// misspelled field.
+#[derive(Deserialize)]
+struct RawFile {
+    #[serde(default)]
+    terminal: Vec<toml::Value>,
+}
+
 /// The compiled-in terminals.
 ///
 /// This cannot fail on a correct build: the same file is parsed by the test
@@ -116,27 +126,34 @@ pub fn merge(
     let mut list = defaults;
     let mut problems = Vec::new();
 
-    let entries = match parse(user_text) {
-        Ok(entries) => entries,
+    let blocks = match toml::from_str::<RawFile>(user_text) {
+        Ok(file) => file.terminal,
         Err(e) => {
             problems.push(format!("{whence} could not be read and was ignored: {e}"));
             return (list, problems);
         }
     };
 
-    for (i, entry) in entries.into_iter().enumerate() {
+    for (i, block_value) in blocks.into_iter().enumerate() {
         // One-based, because the user counts blocks in a file from one.
-        let at = i + 1;
+        let block = i + 1;
+        let entry: Terminal = match block_value.try_into() {
+            Ok(entry) => entry,
+            Err(e) => {
+                problems.push(format!("{whence}: terminal {block} was ignored: {e}"));
+                continue;
+            }
+        };
         if entry.name.trim().is_empty() {
             problems.push(format!(
-                "{whence}: terminal {at} has no `name` and was ignored"
+                "{whence}: terminal {block} has no `name` and was ignored"
             ));
             continue;
         }
         let unknown = entry.unknown_placeholders();
         if !unknown.is_empty() {
             problems.push(format!(
-                "{whence}: terminal {at} (`{}`) uses {}, which Squire does not \
+                "{whence}: terminal {block} (`{}`) uses {}, which Squire does not \
                  know. The placeholders are {}. The entry was ignored.",
                 entry.name,
                 unknown.join(", "),
@@ -145,7 +162,7 @@ pub fn merge(
             continue;
         }
         match list.iter().position(|t| t.name == entry.name) {
-            Some(at) => list[at] = entry,
+            Some(existing) => list[existing] = entry,
             None => list.push(entry),
         }
     }
