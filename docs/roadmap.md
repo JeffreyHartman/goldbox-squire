@@ -44,7 +44,12 @@ tables already exist.
    folder names are guesses until a real install confirms them.
 2. **Conditions and effects.** Show what is on a character: good effects, bad
    effects, and level drain. GBC shows good in green and bad in red. This is a
-   separate structure from the character record and needs its own read.
+   separate structure from the character record and needs its own read. The
+   structure is confirmed for Unlimited Adventures and for that game only: a
+   variable-length chain of ten-byte effect records hanging off the end of the
+   character record, read out of a live save in
+   [docs/findings/frua-effect-chain.md](findings/frua-effect-chain.md). The
+   other eleven games each need the same investigation.
 3. **Full character display.** Everything in the record, not just name, class,
    level, and HP. Ability scores, AC, XP, encumbrance, saving throws.
 4. **Inventory display.** Read-only first. Items, equipped state, charges.

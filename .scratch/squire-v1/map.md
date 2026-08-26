@@ -150,7 +150,11 @@ decision: which three features come first.
 ## Not yet specified
 
 - **Conditions and effects.** A separate structure from the character record.
-  Needs its own investigation before it can be specified.
+  Needs its own investigation before it can be specified. Done for Unlimited
+  Adventures only: the structure is a variable-length chain of ten-byte effect
+  records, written up in
+  [docs/findings/frua-effect-chain.md](../../docs/findings/frua-effect-chain.md).
+  The other eleven games are not checked.
 - **Packaging and release.** Crates.io, GitHub releases, AUR, or none of these.
 - **The Windows platform layer.** `ReadProcessMemory` instead of
   `process_vm_readv`. Cheap if planned for, painful if bolted on.
