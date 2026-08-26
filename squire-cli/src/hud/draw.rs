@@ -19,10 +19,11 @@ use crate::layout::{self, CardLine, Plan};
 
 /// The whole screen: the header, the cards, the wordmark, the status line.
 ///
-/// `selected` is the character the highlight sits on. Out-of-range values are
-/// ignored rather than clamped, because a party that shrank mid-poll is a real
-/// thing and the highlight simply has nothing to sit on for one frame.
-pub fn draw(area: Rect, buf: &mut Buffer, plan: &Plan, party: &Party, selected: usize) {
+/// No character is picked out. A highlight that always sits on somebody makes
+/// that character look like the party leader when it means nothing, and there
+/// is nothing yet to select a character *for*. When there is, the highlight
+/// comes back with the action it belongs to.
+pub fn draw(area: Rect, buf: &mut Buffer, plan: &Plan, party: &Party) {
     buf.set_style(area, Style::default().bg(theme::INK).fg(theme::TEXT));
 
     put(
@@ -42,7 +43,7 @@ pub fn draw(area: Rect, buf: &mut Buffer, plan: &Plan, party: &Party, selected: 
     let Some(grid) = plan.grid.as_ref() else {
         return;
     };
-    cards(area, buf, plan, grid, party, selected);
+    cards(area, buf, plan, grid, party);
 
     // The plan was made for the size the terminal last reported, and a resize
     // can land between that question and this draw. So the room is measured
@@ -74,14 +75,7 @@ fn status_style(plan: &Plan) -> Style {
     Style::default().fg(colour)
 }
 
-fn cards(
-    area: Rect,
-    buf: &mut Buffer,
-    plan: &Plan,
-    grid: &layout::Grid,
-    party: &Party,
-    selected: usize,
-) {
+fn cards(area: Rect, buf: &mut Buffer, plan: &Plan, grid: &layout::Grid, party: &Party) {
     // Stale numbers are still worth something, so they stay on screen. They
     // go grey and lose their colour coding, which is unmissable in peripheral
     // vision, which is where a HUD is read from.
@@ -111,15 +105,7 @@ fn cards(
                 if let (Some(card), Some(c)) = (grid.cards.get(who), party.characters.get(who)) {
                     if let Some(planned) = card.lines.get(usize::from(line)) {
                         let text = layout::line_text(c, planned, width);
-                        let style = line_style(plan, planned, c, who == selected);
-                        put(area, buf, x + 2, y, &text, style);
-                        // The highlight covers the padding too, or it reads as
-                        // a stripe through the card rather than as the card.
-                        if who == selected && !plan.dim {
-                            let pad = Style::default().bg(theme::SELECTED);
-                            put(area, buf, x + 1, y, " ", pad);
-                            put(area, buf, x + 2 + width, y, " ", pad);
-                        }
+                        put(area, buf, x + 2, y, &text, line_style(plan, planned, c));
                     }
                 }
                 x += width + 3;
@@ -135,13 +121,8 @@ fn cards(
 ///
 /// Colour is the only thing decided here, and it is decided from the numbers
 /// rather than from the size. Nothing about presence is touched.
-fn line_style(
-    plan: &Plan,
-    line: &CardLine,
-    c: &squire_core::record::Character,
-    selected: bool,
-) -> Style {
-    let base = if plan.dim {
+fn line_style(plan: &Plan, line: &CardLine, c: &squire_core::record::Character) -> Style {
+    if plan.dim {
         // One grey for the whole block. A dimmed red would still read as an
         // alarm, and the point of dimming is that none of it is live.
         Style::default().fg(theme::HINT).add_modifier(Modifier::DIM)
@@ -157,11 +138,6 @@ fn line_style(
             CardLine::Class | CardLine::Armor | CardLine::Abilities => theme::TEXT,
         };
         Style::default().fg(colour)
-    };
-    if selected && !plan.dim {
-        base.bg(theme::SELECTED)
-    } else {
-        base
     }
 }
 

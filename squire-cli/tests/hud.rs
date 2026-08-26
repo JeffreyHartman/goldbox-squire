@@ -73,11 +73,11 @@ fn caption() -> Caption {
 }
 
 /// Draws at a size and hands back the buffer.
-fn screen(cols: u16, rows: u16, party: &Party, selected: usize) -> Buffer {
+fn screen(cols: u16, rows: u16, party: &Party) -> Buffer {
     let area = Rect::new(0, 0, cols, rows);
     let mut buf = Buffer::empty(area);
     let plan = layout::plan(Size { cols, rows }, party, &caption(), Toggles::default());
-    draw::draw(area, &mut buf, &plan, party, selected);
+    draw::draw(area, &mut buf, &plan, party);
     buf
 }
 
@@ -95,7 +95,7 @@ fn text(buf: &Buffer) -> String {
 
 #[test]
 fn the_party_reaches_the_screen() {
-    let buf = screen(110, 50, &party(), 0);
+    let buf = screen(110, 50, &party());
     let shown = text(&buf);
     for name in ["THRENDER GRONE", "DURIN STONEFOOT", "ELANNA"] {
         assert!(shown.contains(name), "{name} is missing");
@@ -106,7 +106,7 @@ fn the_party_reaches_the_screen() {
 
 #[test]
 fn the_cards_are_framed_and_the_frame_reaches_the_edges() {
-    let buf = screen(80, 40, &party(), 0);
+    let buf = screen(80, 40, &party());
     let shown: Vec<String> = text(&buf).lines().map(str::to_string).collect();
     let top = shown
         .iter()
@@ -131,7 +131,7 @@ fn nothing_is_drawn_outside_the_area() {
         (160, 42),
         (300, 120),
     ] {
-        let buf = screen(cols, rows, &party(), 0);
+        let buf = screen(cols, rows, &party());
         assert_eq!(*buf.area(), Rect::new(0, 0, cols, rows));
         for line in text(&buf).lines() {
             assert_eq!(line.chars().count(), usize::from(cols));
@@ -145,7 +145,7 @@ fn an_empty_party_draws_the_status_line_and_nothing_else() {
         state: PartyState::NotFound,
         characters: Vec::new(),
     };
-    let buf = screen(60, 20, &empty, 0);
+    let buf = screen(60, 20, &empty);
     let shown = text(&buf);
     assert!(!shown.contains('┌'), "cards were drawn for nobody");
     assert!(shown.contains("party"), "{shown:?}");
@@ -156,8 +156,8 @@ fn resizing_reflows_rather_than_scrolling() {
     // The same party at two widths lands in a different number of columns,
     // which is the whole of what reflowing means here.
     let party = party();
-    let narrow = screen(60, 40, &party, 0);
-    let wide = screen(160, 42, &party, 0);
+    let narrow = screen(60, 40, &party);
+    let wide = screen(160, 42, &party);
     let count = |buf: &Buffer| {
         text(buf)
             .lines()
@@ -170,23 +170,25 @@ fn resizing_reflows_rather_than_scrolling() {
 }
 
 #[test]
-fn the_highlight_sits_on_one_character_and_no_other() {
+fn no_character_is_picked_out() {
+    // A highlight that always sits on somebody makes that character look like
+    // the party leader when it means nothing. There is nothing to select a
+    // character for yet, so nothing is selected.
     let party = party();
-    let buf = screen(60, 40, &party, 3);
-    let area = *buf.area();
-    let mut highlighted: Vec<u16> = Vec::new();
-    for y in 0..area.height {
-        if (0..area.width).any(|x| buf[(x, y)].style().bg == Some(theme::SELECTED)) {
-            highlighted.push(y);
+    for (cols, rows) in [(60, 40), (110, 50), (160, 42)] {
+        let buf = screen(cols, rows, &party);
+        let area = *buf.area();
+        let ink = Some(theme::INK);
+        for y in 0..area.height {
+            for x in 0..area.width {
+                assert_eq!(
+                    buf[(x, y)].style().bg,
+                    ink,
+                    "something is highlighted at {x},{y} of {cols}x{rows}"
+                );
+            }
         }
     }
-    assert!(!highlighted.is_empty(), "nothing was highlighted");
-    // One card's worth of rows, all touching.
-    let runs = highlighted
-        .windows(2)
-        .filter(|pair| pair[1] != pair[0] + 1)
-        .count();
-    assert_eq!(runs, 0, "the highlight is in pieces: {highlighted:?}");
 }
 
 // --- Stale numbers dim, ticket 038 ----------------------------------------
@@ -195,7 +197,7 @@ fn the_highlight_sits_on_one_character_and_no_other() {
 fn a_lost_anchor_greys_the_party_and_keeps_the_numbers() {
     let mut lost = party();
     lost.state = PartyState::NotFound;
-    let buf = screen(110, 50, &lost, 0);
+    let buf = screen(110, 50, &lost);
     let shown = text(&buf);
     assert!(
         shown.contains("THRENDER GRONE"),
@@ -229,23 +231,11 @@ fn a_lost_anchor_greys_the_party_and_keeps_the_numbers() {
 }
 
 #[test]
-fn a_lost_anchor_drops_the_highlight_too() {
-    // A highlight on a dimmed card would be the one bright thing on screen.
-    let mut lost = party();
-    lost.state = PartyState::NotFound;
-    let buf = screen(110, 50, &lost, 2);
-    let area = *buf.area();
-    let any = (0..area.height)
-        .any(|y| (0..area.width).any(|x| buf[(x, y)].style().bg == Some(theme::SELECTED)));
-    assert!(!any);
-}
-
-#[test]
 fn a_partial_party_stays_bright_and_says_partial() {
     let mut partial = party();
     partial.state = PartyState::Partial;
     partial.characters.truncate(4);
-    let buf = screen(110, 50, &partial, 0);
+    let buf = screen(110, 50, &partial);
     let shown = text(&buf);
     assert!(shown.contains("partial"), "{shown:?}");
     let area = *buf.area();
@@ -258,14 +248,14 @@ fn a_partial_party_stays_bright_and_says_partial() {
 fn the_reason_survives_where_only_the_status_line_fits() {
     let mut lost = party();
     lost.state = PartyState::NotFound;
-    let buf = screen(30, 2, &lost, 0);
+    let buf = screen(30, 2, &lost);
     assert!(text(&buf).contains("lost"), "{:?}", text(&buf));
 }
 
 #[test]
 fn a_wounded_character_is_coloured_by_how_wounded() {
     let party = party();
-    let buf = screen(110, 50, &party, 5);
+    let buf = screen(110, 50, &party);
     let area = *buf.area();
     let mut seen = Vec::new();
     for y in 0..area.height {
@@ -292,7 +282,18 @@ fn a_wounded_character_is_coloured_by_how_wounded() {
 #[ignore]
 fn dump_the_screens() {
     for (cols, rows) in [(40, 20), (60, 40), (110, 50), (160, 14), (160, 42)] {
-        let buf = screen(cols, rows, &party(), 0);
+        let buf = screen(cols, rows, &party());
         println!("--- {cols}x{rows} ---\n{}\n", text(&buf));
     }
+}
+
+#[test]
+fn the_status_line_names_the_arrangement() {
+    // Cycling with `c` and having to count the cards is a key you press until
+    // something looks right.
+    let party = party();
+    let buf = screen(160, 42, &party);
+    let last = text(&buf).lines().last().unwrap().to_string();
+    assert!(last.contains("3 across"), "{last:?}");
+    assert!(last.contains("auto"), "{last:?}");
 }

@@ -5,9 +5,9 @@
 //! nothing but hand this a size and draw what it answers.
 //!
 //! Splitting it this way is what makes the keyboard contract testable at all.
-//! A key that moves the highlight past the end of the party, or a repick that
-//! leaves the highlight pointing at a character who is gone, is a state
-//! change, and a state change should not need a pseudo-terminal to check.
+//! A toggle, a panel, or a repick clearing the party the old slot left behind
+//! is a state change, and a state change should not need a pseudo-terminal to
+//! check.
 
 use crossterm::event::{KeyCode, KeyModifiers};
 
@@ -42,8 +42,6 @@ pub struct View {
     state: PartyState,
     caption: Caption,
     toggles: Toggles,
-    /// Which character the highlight sits on.
-    selected: usize,
 }
 
 impl View {
@@ -53,7 +51,6 @@ impl View {
             state: PartyState::NotFound,
             caption,
             toggles: Toggles::default(),
-            selected: 0,
         }
     }
 
@@ -73,10 +70,6 @@ impl View {
         layout::plan(size, &self.party(), &self.caption, self.toggles)
     }
 
-    pub fn selected(&self) -> usize {
-        self.selected
-    }
-
     /// A fresh poll.
     pub fn saw(&mut self, party: &Party) {
         self.state = party.state;
@@ -86,7 +79,6 @@ impl View {
             // found, so the words go and the status line speaks for itself.
             self.caption.note = None;
         }
-        self.clamp_highlight();
     }
 
     /// The watch loop's latest word.
@@ -100,7 +92,6 @@ impl View {
         self.caption.slot = Some(slot);
         self.characters.clear();
         self.state = PartyState::NotFound;
-        self.selected = 0;
     }
 
     /// One keypress.
@@ -110,9 +101,10 @@ impl View {
         }
         match code {
             KeyCode::Char('q') | KeyCode::Esc => return Press::Quit,
-            KeyCode::Enter => return Press::AskForSlot,
-            KeyCode::Up | KeyCode::Char('k') => self.move_highlight(-1),
-            KeyCode::Down | KeyCode::Char('j') => self.move_highlight(1),
+            // Not Enter. Enter is the key you press to find out what a key
+            // does, and going back to the wizard is not a thing to discover by
+            // accident. `s` for slot, and Enter means nothing.
+            KeyCode::Char('s') => return Press::AskForSlot,
             KeyCode::Char('a') => self.toggles.abilities = !self.toggles.abilities,
             KeyCode::Char('c') => self.cycle_columns(),
             KeyCode::Char(digit @ '1'..='9') => {
@@ -126,19 +118,6 @@ impl View {
             _ => {}
         }
         Press::Handled
-    }
-
-    /// Moves the highlight, and stops at each end rather than wrapping. A HUD
-    /// glanced at sideways should not move the highlight somewhere surprising.
-    fn move_highlight(&mut self, by: i64) {
-        let last = self.characters.len().saturating_sub(1) as i64;
-        self.selected = (self.selected as i64 + by).clamp(0, last) as usize;
-    }
-
-    fn clamp_highlight(&mut self) {
-        if self.selected >= self.characters.len() {
-            self.selected = self.characters.len().saturating_sub(1);
-        }
     }
 
     /// Steps through the arrangements the party divides into evenly, and then

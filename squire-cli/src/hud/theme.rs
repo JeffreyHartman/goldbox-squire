@@ -17,8 +17,6 @@ pub const INK: Color = Color::Rgb(12, 10, 8);
 pub const TEXT: Color = Color::Rgb(205, 198, 178);
 /// Faint grey, for hints.
 pub const HINT: Color = Color::Rgb(96, 92, 82);
-/// EGA blue, behind the selected character.
-pub const SELECTED: Color = Color::Rgb(0, 85, 170);
 /// Hit points at or near full.
 pub const HP_FULL: Color = Color::Rgb(0, 170, 0);
 /// Hit points wounded.

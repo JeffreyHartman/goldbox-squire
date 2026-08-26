@@ -73,3 +73,34 @@ not any more: `hud::view::View` holds everything a key changes and
 `tests/hud_keys.rs` drives it directly. Sixteen tests cover quitting, both ends
 of the highlight, a party that shrank underneath it, both toggles, the reserved
 number keys, and a retarget clearing the old slot's party.
+
+## Changed after Jeff used it, 2026-08-26
+
+Three of the keys were wrong in practice, and one acceptance criterion above is
+now void. It stays ticked and struck through by this section rather than
+rewritten, because the reasoning matters.
+
+**The highlight is gone, and so are the arrow keys.** "The highlight moves
+through the party and does not run off either end" is no longer a requirement.
+A highlight that always sits on somebody makes that character look like the
+party leader, which in a Gold Box game means something and here means nothing.
+There is nothing yet to select a character *for*, so the selector was a mode
+with no action behind it, which is the same mistake as the spike's left menu:
+screen furniture advertising a feature that does not exist. Deleted rather than
+made optional. When a character-level action lands, the highlight comes back
+with it, and re-adding it is a field on `View` and a background colour.
+
+**The slot repick moved off Enter and onto `s`.** Jeff pressed Enter to find
+out what it did, because the highlight had suggested he was picking a character
+for something, and it threw him back to the wizard. Enter is the key people
+press to discover what a key does, and going back to the wizard is not a thing
+to discover by accident. Enter now means nothing at all.
+
+**The status line names the arrangement.** `2 across, auto` or `6 across,
+chosen`. Cycling with `c` and having to count the cards is a key you press until
+something looks right, and there is no way to tell that `c` has come back round
+to letting the rule decide. `auto` says a resize may change it; `chosen` says a
+key asked for it and `c` will move off it.
+
+There are still no named layouts. The honest name for an arrangement is how
+many cards are across and who chose it, which is what this prints.

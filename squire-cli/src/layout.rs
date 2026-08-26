@@ -168,7 +168,7 @@ const CARD_AIR: u16 = 4;
 
 /// The keys the HUD answers to, shown on the status line so that they are
 /// visible without reading the source.
-const KEY_HINTS: &str = "q quit · ↑↓ pick · a abilities · c columns · enter slot";
+const KEY_HINTS: &str = "q quit · a abilities · c columns · s slot";
 
 /// The rows Squire's name takes when it is drawn large.
 pub const WORDMARK_ROWS: u16 = 5;
@@ -182,11 +182,12 @@ pub fn plan(size: Size, party: &Party, caption: &Caption, toggles: Toggles) -> P
     let liveness = liveness(party);
     let grid = choose(size, party, toggles);
     let wordmark = wordmark_fits(size, grid.as_ref());
+    let left = status_text(caption, party, liveness, grid.as_ref(), toggles);
 
     Plan {
         size,
         header: fit(&header_text(caption), size.cols),
-        status: two_up(&status_text(caption, party, liveness), KEY_HINTS, size.cols),
+        status: two_up(&left, KEY_HINTS, size.cols),
         grid,
         wordmark,
         dim: liveness == Liveness::Lost,
@@ -518,7 +519,18 @@ fn header_text(caption: &Caption) -> String {
 ///
 /// The panel's number goes first because the number keys are what selects it,
 /// and a panel that shows its own key needs no menu built for it.
-fn status_text(caption: &Caption, party: &Party, liveness: Liveness) -> String {
+///
+/// The arrangement is named here rather than left to be counted off the screen.
+/// There are no named layouts in this program, so the honest name for one is
+/// how many cards are across and whether the rule chose it or a key did. A key
+/// that cycles with no read-out is a key you press until something looks right.
+fn status_text(
+    caption: &Caption,
+    party: &Party,
+    liveness: Liveness,
+    grid: Option<&Grid>,
+    toggles: Toggles,
+) -> String {
     let state = match liveness {
         Liveness::Live => format!("live · {}", party.characters.len()),
         Liveness::Partial => format!("partial · {} shown", party.characters.len()),
@@ -526,6 +538,16 @@ fn status_text(caption: &Caption, party: &Party, liveness: Liveness) -> String {
         Liveness::Waiting => "no party yet".to_string(),
     };
     let mut text = format!("1 {} · {state}", caption.panel);
+    if let Some(grid) = grid {
+        // `chosen` means a key asked for this and `c` will move off it.
+        // `auto` means the rule picked it and a resize may change it.
+        let how = if toggles.across == Some(grid.across) {
+            "chosen"
+        } else {
+            "auto"
+        };
+        text.push_str(&format!(" · {} across, {how}", grid.across));
+    }
     if let Some(note) = &caption.note {
         text.push_str(" · ");
         text.push_str(note);

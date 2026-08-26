@@ -81,3 +81,23 @@ Two-axis review, 2026-08-25.
 - The HUD's state moved out of the terminal into `hud::view::View`. The
   terminal module now owns the terminal and nothing else, and the keyboard
   contract is tested with no terminal at all.
+
+## Why the key hints vanish as the window narrows, 2026-08-26
+
+Jeff noticed that two columns of cards collapse to one on a resize and still
+read well, while the key hints on the status line sometimes disappear. The
+collapse is the rule working. The hints going is deliberate and worth writing
+down, because it looks like a bug.
+
+The status line is two pieces pushed to opposite ends: what the party is doing
+on the left, the keys on the right. `layout::two_up` draws both when both fit
+and drops the **right** one when they do not, then truncates the left. Half of
+each is worse than all of one, and of the two the keys are the reminder while
+the left half is the data. So the order of what survives is: the panel and its
+number, the party state, the arrangement, the watch loop's latest word, and
+last of all the keys.
+
+`--help` lists the keys, which is why losing them from a narrow window costs
+nothing. Every card in the party surviving a resize is the same `two_up` rule
+one level down: the class and level share the name line until they cannot, and
+then they get their own.

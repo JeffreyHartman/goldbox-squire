@@ -94,47 +94,6 @@ fn a_key_nobody_bound_does_nothing() {
     assert_eq!(before, after);
 }
 
-// --- The highlight --------------------------------------------------------
-
-#[test]
-fn the_highlight_moves_and_stops_at_both_ends() {
-    let mut view = watching();
-    assert_eq!(view.selected(), 0);
-    for _ in 0..20 {
-        press(&mut view, KeyCode::Down);
-    }
-    assert_eq!(view.selected(), 5, "it ran off the bottom");
-    for _ in 0..20 {
-        press(&mut view, KeyCode::Up);
-    }
-    assert_eq!(view.selected(), 0, "it ran off the top");
-}
-
-#[test]
-fn the_vi_keys_do_the_same_thing_as_the_arrows() {
-    let mut arrows = watching();
-    let mut letters = watching();
-    press(&mut arrows, KeyCode::Down);
-    press(&mut letters, KeyCode::Char('j'));
-    assert_eq!(arrows.selected(), letters.selected());
-    press(&mut arrows, KeyCode::Up);
-    press(&mut letters, KeyCode::Char('k'));
-    assert_eq!(arrows.selected(), letters.selected());
-}
-
-#[test]
-fn a_party_that_shrank_leaves_the_highlight_somewhere_real() {
-    let mut view = watching();
-    for _ in 0..5 {
-        press(&mut view, KeyCode::Down);
-    }
-    let mut fewer = party();
-    fewer.characters.truncate(2);
-    fewer.state = PartyState::Partial;
-    view.saw(&fewer);
-    assert_eq!(view.selected(), 1);
-}
-
 // --- The toggles ----------------------------------------------------------
 
 #[test]
@@ -205,23 +164,38 @@ fn the_number_keys_are_reserved_and_one_has_a_screen() {
 // --- The slot repick ------------------------------------------------------
 
 #[test]
-fn enter_asks_for_a_slot_rather_than_deciding_one() {
-    // The wizard owns the question. All the view does is say it was asked.
+fn s_asks_for_a_slot_and_enter_does_nothing() {
+    // Enter is the key you press to find out what a key does. Going back to
+    // the wizard is not a thing to discover by accident.
     let mut view = watching();
-    assert_eq!(press(&mut view, KeyCode::Enter), Press::AskForSlot);
+    assert_eq!(press(&mut view, KeyCode::Enter), Press::Handled);
+    assert_eq!(press(&mut view, KeyCode::Char('s')), Press::AskForSlot);
     assert_eq!(view.party().characters.len(), 6, "nothing changed yet");
+}
+
+#[test]
+fn the_arrow_keys_are_unbound() {
+    // The highlight went with the selector. When there is something to select
+    // a character for, both come back together.
+    let before = watching();
+    let mut after = watching();
+    for code in [
+        KeyCode::Up,
+        KeyCode::Down,
+        KeyCode::Char('j'),
+        KeyCode::Char('k'),
+    ] {
+        assert_eq!(press(&mut after, code), Press::Handled, "{code:?}");
+    }
+    assert_eq!(before, after);
 }
 
 #[test]
 fn retargeting_clears_the_party_the_old_slot_left_behind() {
     let mut view = watching();
-    for _ in 0..4 {
-        press(&mut view, KeyCode::Down);
-    }
     view.retargeted('B');
 
     assert!(view.party().characters.is_empty(), "the old party survived");
-    assert_eq!(view.selected(), 0);
     let plan = roomy(&view);
     assert!(plan.header.contains('B'), "{:?}", plan.header);
     assert!(!plan.dim, "an empty new slot is waiting, not lost");
@@ -261,5 +235,30 @@ fn losing_and_recovering_the_anchor_dims_and_undims_the_same_party() {
     assert_eq!(
         back, live,
         "the recovered frame is not the frame from before"
+    );
+}
+
+#[test]
+fn the_status_line_says_which_arrangement_and_who_chose_it() {
+    let mut view = watching();
+    let rule = roomy(&view).grid.unwrap().across;
+    let status = roomy(&view).status;
+    assert!(
+        status.contains(&format!("{rule} across, auto")),
+        "{status:?}"
+    );
+
+    press(&mut view, KeyCode::Char('c'));
+    let status = roomy(&view).status;
+    assert!(status.contains("1 across, chosen"), "{status:?}");
+
+    // Round the cycle and back to the rule deciding.
+    for _ in 0..4 {
+        press(&mut view, KeyCode::Char('c'));
+    }
+    let status = roomy(&view).status;
+    assert!(
+        status.contains(&format!("{rule} across, auto")),
+        "{status:?}"
     );
 }
