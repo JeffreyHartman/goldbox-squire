@@ -135,6 +135,17 @@ Settled in the grilling session of 2026-08-25, before any code.
   yet read.
 - **A command menu behind a key**, GBC style, for when there are enough
   commands to need one. Reserved, not designed.
+- **Whether the wordmark survives.** It is drawn in the roomy mockup and
+  nowhere else. Jeff has not said keep or cut. Nothing is blocked either way:
+  036 asserts that it appears only when roomy, and cutting it later deletes an
+  assertion rather than changing a rule.
+- **How toggles are asked for once there is more than one.** Ability scores
+  are the first thing with an on and off, and one key each will not scale when
+  THAC0, experience and encumbrance land. Not worth designing before there is
+  a second one.
+- **Whether the table drawings go.** `.scratch/squire-hud/mockups/table-*.txt`
+  and `mock.py` are the first pass, kept only in case the cards read worse in
+  a real terminal than they look on paper. Jeff deletes them when he is sure.
 
 ## Out of scope
 
