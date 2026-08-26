@@ -17,7 +17,10 @@ fn main() {
     };
     let Some(game) = games::find(&id) else {
         let known: Vec<String> = games::games().into_iter().map(|g| g.id).collect();
-        eprintln!("unknown game `{id}`. Compiled-in games: {}", known.join(", "));
+        eprintln!(
+            "unknown game `{id}`. Compiled-in games: {}",
+            known.join(", ")
+        );
         std::process::exit(2);
     };
 

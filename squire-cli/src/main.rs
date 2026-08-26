@@ -6,20 +6,19 @@ use std::time::Duration;
 
 use squire_cli::args::{Args, USAGE};
 use squire_cli::attach;
-use squire_cli::wizard;
 use squire_cli::conf;
-use squire_cli::config::Config;
+use squire_cli::config::{Config, WindowSize};
+use squire_cli::hud;
+use squire_cli::keys;
+use squire_cli::layout::{Caption, Size};
 use squire_cli::manual;
 use squire_cli::output;
-use squire_core::launch::{Emulator, Launched};
+use squire_cli::watch::{self, Watch};
+use squire_cli::wizard;
+use squire_core::launch::Emulator;
 use squire_core::mem::ProcessReader;
-use squire_core::session::{PartyState, Session};
-use squire_core::{games, saves, Error};
-
-/// How often to poll while no party was found yet. Each failed poll is a full
-/// memory sweep through DOS boot, title screen and load menu, so this is far
-/// slower than the redraw interval.
-const WAITING_POLL: Duration = Duration::from_secs(2);
+use squire_core::session::Session;
+use squire_core::{games, saves};
 
 fn main() -> ExitCode {
     match run() {
@@ -53,15 +52,13 @@ fn run() -> Result<(), String> {
             game.table.clone(),
             resolved.names.clone(),
         );
-        return watch(
-            &mut session,
-            &args,
-            &game,
-            None,
-            Some(resolved.slot),
-            resolved.names,
-            None,
-        );
+        let watching = Watching {
+            game,
+            slot: Some(resolved.slot),
+            names: resolved.names,
+            save_dir: None,
+        };
+        return run_watch(&mut session, &args, &watching, None, &mut config);
     }
 
     // Find the user's installs, once. A normal run reads the cached results;
@@ -69,8 +66,7 @@ fn run() -> Result<(), String> {
     // this build knows games the last scan did not look for. Finding nothing
     // is not fatal: the wizard's directory question takes a typed path.
     let game_ids: Vec<String> = games::games().into_iter().map(|g| g.id).collect();
-    if config.installs.is_empty() || config.needs_rediscovery() || config.known_games != game_ids
-    {
+    if config.installs.is_empty() || config.needs_rediscovery() || config.known_games != game_ids {
         let mut roots = squire_core::discover::default_roots();
         roots.extend(config.extra_roots.iter().map(PathBuf::from));
         let remembered = config.installs.clone();
@@ -175,16 +171,143 @@ fn run() -> Result<(), String> {
     // The repick folder is the install's own save folder: for a designs game
     // that is the game folder, and repicking asks the design again, so a
     // fresh install's first save is reachable mid-watch.
-    let repick_dir = install.save_dir();
-    watch(
-        &mut session,
-        &args,
-        &game,
-        Some(&mut running),
+    let watching = Watching {
+        game,
         slot,
         names,
-        Some(&repick_dir),
+        save_dir: Some(install.save_dir()),
+    };
+    run_watch(
+        &mut session,
+        &args,
+        &watching,
+        Some(&mut running),
+        &mut config,
     )
+}
+
+/// Wires the watch loop to a front end and a keyboard.
+///
+/// The HUD is what a person gets, and `--plain` is the escape. `args.rs`
+/// already argues that an argument required to make the program work is not
+/// an argument, which is why there is no `--watch`; the same reasoning makes
+/// the HUD the default rather than a `--tui` opt-in.
+fn run_watch<R: squire_core::mem::Reader>(
+    session: &mut Session<R>,
+    args: &Args,
+    watching: &Watching,
+    running: Option<&mut squire_core::launch::Launched>,
+    config: &mut Config,
+) -> Result<(), String> {
+    let Watching {
+        game,
+        slot,
+        names,
+        save_dir,
+    } = watching;
+    let (slot, names, save_dir) = (*slot, names.clone(), save_dir.as_deref());
+    let timing = Watch {
+        interval: Duration::from_millis(args.interval_ms),
+        ..Watch::default()
+    };
+    let running = running.map(|r| r as &mut dyn watch::Alive);
+
+    // JSON is for a program, and a program is never watching a screen. A
+    // stream that is not a terminal cannot hold a HUD at all, and saying so
+    // beats failing to take over something that is not there.
+    let plain = args.plain || args.json || !is_terminal();
+    if plain && !(args.plain || args.json) {
+        eprintln!("gbs: standard output is not a terminal, so the table is printed instead.");
+    }
+
+    if plain {
+        let mut screen = output::Plain::stdio(args.json);
+        let mut keys = keys::Stdin::new(game, save_dir);
+        return watch::watch(
+            session,
+            &timing,
+            &mut screen,
+            &mut keys,
+            running,
+            slot,
+            names,
+        );
+    }
+
+    let caption = Caption {
+        game: game.name.clone(),
+        slot,
+        panel: "party".to_string(),
+        note: None,
+    };
+    let remembered = config.hud.map(|h| Size {
+        cols: h.columns,
+        rows: h.rows,
+    });
+    let interface = hud::Hud::start(caption, remembered)?;
+    let mut screen = interface.screen();
+    let mut keys = interface.keys(game, save_dir);
+    let outcome = watch::watch(
+        session,
+        &timing,
+        &mut screen,
+        &mut keys,
+        running,
+        slot,
+        names,
+    );
+
+    // Recorded on the way out, whether the run ended well or badly: the user
+    // resized the window either way, and losing that over an error would mean
+    // resizing it again next launch.
+    // Read before the terminal goes back, written after: a warning printed
+    // onto the alternate screen is a warning nobody can read.
+    let size = interface.size();
+    drop(interface);
+    remember_size(config, size);
+    outcome
+}
+
+/// What one watch is pointed at.
+///
+/// These four travel together everywhere below the wizard, and the `--pid`
+/// path fills the same four from a different source. One type rather than one
+/// long parameter list.
+struct Watching {
+    game: games::Game,
+    /// The save slot, when one has been picked. A fresh install has none until
+    /// the user saves in game and repicks mid-watch.
+    slot: Option<char>,
+    /// The character names to look for, taken from the save files.
+    names: Vec<String>,
+    /// The install's own save folder, which is where a repick starts looking.
+    /// `None` on the `--pid` path, which never started a game.
+    save_dir: Option<PathBuf>,
+}
+
+/// Writes the size the HUD was left at into the config.
+///
+/// A size of zero is what a terminal reports when it does not know its own,
+/// and it is not worth writing down.
+fn remember_size(config: &mut Config, size: Size) {
+    let hud = WindowSize {
+        columns: size.cols,
+        rows: size.rows,
+    };
+    if !hud.looks_like_a_window() || config.hud == Some(hud) {
+        return;
+    }
+    config.hud = Some(hud);
+    if let Err(e) = config.save() {
+        eprintln!("gbs: warning: could not remember the window size: {e}");
+    }
+}
+
+/// Whether standard output is a terminal, asked of the kernel rather than of
+/// an environment variable, because a variable is a guess.
+fn is_terminal() -> bool {
+    use crossterm::tty::IsTty;
+    std::io::stdout().is_tty()
 }
 
 /// The folder gbs's own files live in: the config file's folder.
@@ -202,154 +325,4 @@ fn log_path() -> PathBuf {
     Config::path()
         .and_then(|p| p.parent().map(|d| d.join("emulator.log")))
         .unwrap_or_else(|| std::env::temp_dir().join("gbs-emulator.log"))
-}
-
-/// How long the watch hunts a party before naming its assumption: which slot
-/// it is looking for, and that Enter chooses a different one.
-const HINT_AFTER: Duration = Duration::from_secs(10);
-
-/// Redraws the party until the emulator exits or the user stops the tool.
-///
-/// The emulator ending is not an error: both publishers' autoexecs end in
-/// `exit`, so quitting the game closes DOSBox in every normal setup. This is
-/// how sessions end. Every read failure stays fatal and non-zero, so a
-/// permission error stays loud.
-///
-/// `save_dir` enables repicking the save slot: Enter at any point returns to
-/// the slot question and the watch resumes with the new slot's names. `None`
-/// (the `--pid` path) never prompts.
-fn watch<R: squire_core::mem::Reader>(
-    session: &mut Session<R>,
-    args: &Args,
-    game: &games::Game,
-    mut running: Option<&mut Launched>,
-    mut slot: Option<char>,
-    mut names: Vec<String>,
-    save_dir: Option<&Path>,
-) -> Result<(), String> {
-    let mut found_once = false;
-    let mut searching_since = std::time::Instant::now();
-    let mut hinted = false;
-    // Once stdin hits end of file (a closed pipe), there is no keyboard to
-    // listen to, and polling a fd at EOF would spin.
-    let mut stdin_open = save_dir.is_some();
-    match slot {
-        Some(letter) => eprintln!("gbs: waiting for the party of save slot {letter} to load..."),
-        None => eprintln!(
-            "gbs: no saved game yet. Play on; after you save in game, press \
-             Enter here to pick it."
-        ),
-    }
-
-    loop {
-        if let Some(r) = running.as_deref_mut() {
-            if !r.is_running() {
-                eprintln!("gbs: the emulator ended. Until next time.");
-                return Ok(());
-            }
-        }
-
-        match session.party() {
-            Ok(party) => {
-                if party.state == PartyState::NotFound && !found_once {
-                    // Still waiting: the game is booting or sits in a menu.
-                    // After a while, the missing party may mean a wrong pick,
-                    // so name the assumption instead of hunting forever. With
-                    // no slot chosen there is no assumption to name.
-                    if let Some(letter) = slot {
-                        if !hinted && searching_since.elapsed() >= HINT_AFTER {
-                            eprintln!(
-                                "gbs: still looking for save slot {letter}'s party ({}). \
-                                 If another save is loaded, press Enter to choose a \
-                                 different slot.",
-                                names.join(", ")
-                            );
-                            hinted = true;
-                        }
-                    }
-                } else {
-                    found_once = true;
-                    if !args.json {
-                        // Clear the screen and put the cursor at the top, so
-                        // the table redraws in place.
-                        print!("\x1b[2J\x1b[H");
-                    }
-                    print(&party, args);
-                }
-            }
-            // The process went away between polls: the user quit the game.
-            Err(Error::NoSuchProcess { .. }) => {
-                eprintln!("gbs: the emulator ended. Until next time.");
-                return Ok(());
-            }
-            Err(e) => return Err(e.to_string()),
-        }
-
-        let pause = if found_once {
-            Duration::from_millis(args.interval_ms)
-        } else {
-            WAITING_POLL
-        };
-
-        // The pause doubles as the ear for Enter: wait on stdin readiness
-        // with the poll cadence as the timeout, so a keypress is noticed at
-        // once and no thread is added.
-        if !stdin_open || !stdin_ready(pause) {
-            continue;
-        }
-        let mut line = String::new();
-        match std::io::stdin().read_line(&mut line) {
-            Ok(0) => {
-                stdin_open = false;
-                continue;
-            }
-            Err(e) => return Err(format!("reading the keyboard: {e}")),
-            Ok(_) => {}
-        }
-        let dir = save_dir.expect("stdin_open starts false without a save_dir");
-        if let Some((new_slot, new_names)) = wizard::repick(
-            &mut std::io::stdin().lock(),
-            &mut std::io::stderr(),
-            game,
-            dir,
-        )? {
-            slot = Some(new_slot);
-            names = new_names;
-            session.retarget(names.clone());
-            found_once = false;
-            hinted = false;
-            searching_since = std::time::Instant::now();
-            eprintln!("gbs: waiting for the party of save slot {new_slot} to load...");
-        }
-    }
-}
-
-/// Waits up to `timeout` for stdin to have something to read.
-///
-/// The user types nothing on most polls, so this times out and the cadence is
-/// exactly the sleep it replaced.
-fn stdin_ready(timeout: Duration) -> bool {
-    use std::os::fd::AsFd;
-    let stdin = std::io::stdin();
-    let mut fds = [nix::poll::PollFd::new(
-        stdin.as_fd(),
-        nix::poll::PollFlags::POLLIN,
-    )];
-    let ms = u16::try_from(timeout.as_millis()).unwrap_or(u16::MAX);
-    match nix::poll::poll(&mut fds, nix::poll::PollTimeout::from(ms)) {
-        Ok(n) => n > 0,
-        // A signal or a odd terminal is not worth dying over; keep polling.
-        Err(_) => {
-            std::thread::sleep(timeout);
-            false
-        }
-    }
-}
-
-fn print(party: &squire_core::session::Party, args: &Args) {
-    if args.json {
-        println!("{}", output::json(party));
-    } else {
-        print!("{}", output::table(party));
-    }
 }

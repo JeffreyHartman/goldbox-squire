@@ -16,10 +16,14 @@ fn all_flags_given_resolves_with_no_interaction() {
     // resolve() takes no input stream, so it cannot prompt by construction.
     let dir = saves_dir("flags", &["CHRDATJ1.SAV"]);
     let args = parse(&[
-        "--pid", "1234",
-        "--game", "pool-of-radiance",
-        "--slot", "J",
-        "--game-dir", dir.to_str().unwrap(),
+        "--pid",
+        "1234",
+        "--game",
+        "pool-of-radiance",
+        "--slot",
+        "J",
+        "--game-dir",
+        dir.to_str().unwrap(),
     ]);
 
     let resolved = attach::resolve(&args, &Config::default()).unwrap();
@@ -48,11 +52,16 @@ fn design_on_a_game_without_designs_is_an_error_here_too() {
     // contract instead of a silently ignored flag.
     let dir = saves_dir("design-chrdat", &["CHRDATA1.SAV"]);
     let args = parse(&[
-        "--pid", "1234",
-        "--game", "pool-of-radiance",
-        "--slot", "A",
-        "--game-dir", dir.to_str().unwrap(),
-        "--design", "BASILISK",
+        "--pid",
+        "1234",
+        "--game",
+        "pool-of-radiance",
+        "--slot",
+        "A",
+        "--game-dir",
+        dir.to_str().unwrap(),
+        "--design",
+        "BASILISK",
     ]);
 
     let err = attach::resolve(&args, &Config::default()).unwrap_err();
@@ -82,9 +91,12 @@ fn a_missing_game_dir_names_the_flag() {
 fn a_missing_slot_with_several_populated_names_the_flag_and_the_slots() {
     let dir = saves_dir("multi", &["CHRDATA1.SAV", "CHRDATJ1.SAV"]);
     let args = parse(&[
-        "--pid", "1234",
-        "--game", "pool-of-radiance",
-        "--game-dir", dir.to_str().unwrap(),
+        "--pid",
+        "1234",
+        "--game",
+        "pool-of-radiance",
+        "--game-dir",
+        dir.to_str().unwrap(),
     ]);
 
     let err = attach::resolve(&args, &Config::default()).unwrap_err();
@@ -97,9 +109,12 @@ fn a_missing_slot_with_several_populated_names_the_flag_and_the_slots() {
 fn a_lone_populated_slot_resolves_without_the_flag() {
     let dir = saves_dir("lone", &["CHRDATJ1.SAV"]);
     let args = parse(&[
-        "--pid", "1234",
-        "--game", "pool-of-radiance",
-        "--game-dir", dir.to_str().unwrap(),
+        "--pid",
+        "1234",
+        "--game",
+        "pool-of-radiance",
+        "--game-dir",
+        dir.to_str().unwrap(),
     ]);
 
     let resolved = attach::resolve(&args, &Config::default()).unwrap();
@@ -111,10 +126,14 @@ fn a_lone_populated_slot_resolves_without_the_flag() {
 fn an_empty_named_slot_errors_with_the_populated_list() {
     let dir = saves_dir("empty-slot", &["CHRDATA1.SAV"]);
     let args = parse(&[
-        "--pid", "1234",
-        "--game", "pool-of-radiance",
-        "--slot", "B",
-        "--game-dir", dir.to_str().unwrap(),
+        "--pid",
+        "1234",
+        "--game",
+        "pool-of-radiance",
+        "--slot",
+        "B",
+        "--game-dir",
+        dir.to_str().unwrap(),
     ]);
 
     let err = attach::resolve(&args, &Config::default()).unwrap_err();
@@ -160,7 +179,11 @@ fn saves_dir(tag: &str, files: &[&str]) -> PathBuf {
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(&base).unwrap();
     for file in files {
-        let name = if file.contains('J') { "JULIET" } else { "ALPHA" };
+        let name = if file.contains('J') {
+            "JULIET"
+        } else {
+            "ALPHA"
+        };
         let mut bytes = vec![0u8; 285];
         bytes[0] = name.len() as u8;
         bytes[1..1 + name.len()].copy_from_slice(name.as_bytes());

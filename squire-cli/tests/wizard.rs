@@ -60,9 +60,7 @@ fn two_dirs(tag: &str) -> (Config, PathBuf, PathBuf) {
 }
 
 fn chosen(config: &mut Config, key: &str) {
-    config
-        .chosen
-        .insert("pool-of-radiance".into(), key.into());
+    config.chosen.insert("pool-of-radiance".into(), key.into());
     config.last_game = Some("pool-of-radiance".into());
 }
 
@@ -143,7 +141,10 @@ fn a_bad_typed_path_is_explained_and_asked_again() {
     let (result, output) = choose(&input, &mut config, None, None, None, None);
 
     assert!(result.is_ok(), "got: {result:?}");
-    assert!(output.contains("CHRDAT"), "explains what was missing: {output}");
+    assert!(
+        output.contains("CHRDAT"),
+        "explains what was missing: {output}"
+    );
 }
 
 #[test]
@@ -177,7 +178,14 @@ fn naming_the_game_skips_the_game_question() {
     let (mut config, _, _) = two_dirs("game-arg");
     chosen(&mut config, "gog:pool-of-radiance");
 
-    let (result, output) = choose("\n", &mut config, Some("pool-of-radiance"), None, None, None);
+    let (result, output) = choose(
+        "\n",
+        &mut config,
+        Some("pool-of-radiance"),
+        None,
+        None,
+        None,
+    );
 
     assert!(result.is_ok());
     assert!(!output.contains("Which game?"), "got: {output}");
@@ -199,7 +207,14 @@ fn naming_everything_asks_nothing() {
     let (mut config, _, _) = two_dirs("all-args");
     chosen(&mut config, "gog:pool-of-radiance");
 
-    let (result, output) = choose("", &mut config, Some("pool-of-radiance"), None, None, Some('A'));
+    let (result, output) = choose(
+        "",
+        &mut config,
+        Some("pool-of-radiance"),
+        None,
+        None,
+        Some('A'),
+    );
 
     assert!(result.is_ok());
     assert_eq!(output, "");
@@ -295,9 +310,10 @@ fn frua_config(tag: &str) -> (Config, PathBuf) {
             saves: String::new(),
         },
     );
-    config
-        .chosen
-        .insert("unlimited-adventures".into(), "manual:unlimited-adventures".into());
+    config.chosen.insert(
+        "unlimited-adventures".into(),
+        "manual:unlimited-adventures".into(),
+    );
     (config, root)
 }
 
@@ -320,7 +336,14 @@ fn frua_record(name: &str) -> Vec<u8> {
 fn a_designs_game_asks_which_adventure() {
     let (mut config, root) = frua_config("ask");
 
-    let (result, output) = choose("1\nA\n", &mut config, Some("unlimited-adventures"), None, None, None);
+    let (result, output) = choose(
+        "1\nA\n",
+        &mut config,
+        Some("unlimited-adventures"),
+        None,
+        None,
+        None,
+    );
 
     let (_, sitting) = result.unwrap();
     let sitting = sitting.expect("a saved game exists");
@@ -361,7 +384,10 @@ fn an_unknown_design_errors_naming_the_ones_with_saves() {
     );
 
     let err = result.unwrap_err();
-    assert!(err.contains("BASILISK") && err.contains("TUTORIAL"), "got: {err}");
+    assert!(
+        err.contains("BASILISK") && err.contains("TUTORIAL"),
+        "got: {err}"
+    );
 }
 
 #[test]
@@ -403,7 +429,14 @@ fn a_fresh_frua_install_offers_to_launch_anyway() {
     let (mut config, root) = frua_config("fresh");
     blank_the_designs(&root);
 
-    let (result, output) = choose("\n", &mut config, Some("unlimited-adventures"), None, None, None);
+    let (result, output) = choose(
+        "\n",
+        &mut config,
+        Some("unlimited-adventures"),
+        None,
+        None,
+        None,
+    );
 
     let (_, sitting) = result.unwrap();
     assert!(sitting.is_none(), "no saved game exists yet");
@@ -439,7 +472,14 @@ fn a_fresh_chrdat_install_offers_to_launch_anyway_too() {
     );
     chosen(&mut config, "manual:pool-of-radiance");
 
-    let (result, output) = choose("\n", &mut config, Some("pool-of-radiance"), None, None, None);
+    let (result, output) = choose(
+        "\n",
+        &mut config,
+        Some("pool-of-radiance"),
+        None,
+        None,
+        None,
+    );
 
     let (_, sitting) = result.unwrap();
     assert!(sitting.is_none());
@@ -463,7 +503,14 @@ fn an_explicit_slot_on_a_fresh_install_stays_a_hard_error() {
     );
     chosen(&mut config, "manual:pool-of-radiance");
 
-    let (result, _) = choose("", &mut config, Some("pool-of-radiance"), None, None, Some('A'));
+    let (result, _) = choose(
+        "",
+        &mut config,
+        Some("pool-of-radiance"),
+        None,
+        None,
+        Some('A'),
+    );
 
     assert!(result.is_err());
 }
@@ -542,13 +589,8 @@ fn a_repick_with_no_saved_game_keeps_watching_instead_of_dying() {
     let dir = saves_dir("repick-none", &[]);
     let mut output = Vec::new();
 
-    let picked = wizard::repick(
-        &mut Cursor::new(b"".as_slice()),
-        &mut output,
-        &por(),
-        &dir,
-    )
-    .unwrap();
+    let picked =
+        wizard::repick(&mut Cursor::new(b"".as_slice()), &mut output, &por(), &dir).unwrap();
 
     assert!(picked.is_none());
     let text = String::from_utf8(output).unwrap();

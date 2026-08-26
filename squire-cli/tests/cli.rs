@@ -35,7 +35,10 @@ fn watch_is_not_a_flag_because_watching_is_what_the_tool_does() {
     let err = parse(&["--watch"]).unwrap_err();
 
     assert!(err.contains("--watch"), "got: {err}");
-    assert!(err.contains("--help"), "the error points at the usage: {err}");
+    assert!(
+        err.contains("--help"),
+        "the error points at the usage: {err}"
+    );
 }
 
 #[test]
@@ -245,4 +248,108 @@ fn a_long_name_does_not_break_the_table_alignment() {
         widths.windows(2).all(|w| w[0] == w[1]),
         "every row is the same width: {widths:?}"
     );
+}
+
+// The printed screen: the loop hands it a party, it decides how that looks.
+
+#[test]
+fn the_printed_screen_clears_before_it_redraws_the_table() {
+    let p = party(PartyState::Live, vec![character("BAKSHI", 3, 7)]);
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    {
+        let mut screen = output::Plain::new(&mut out, &mut err, false);
+        squire_cli::watch::Screen::party(&mut screen, &p);
+    }
+
+    let text = String::from_utf8(out).unwrap();
+    assert!(text.starts_with("\x1b[2J\x1b[H"), "got: {text:?}");
+    assert!(text.contains("BAKSHI"));
+    assert!(err.is_empty(), "the table goes to standard output alone");
+}
+
+#[test]
+fn the_json_screen_does_not_clear_the_screen_under_a_pipe() {
+    let p = party(PartyState::Live, vec![character("BAKSHI", 3, 7)]);
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    {
+        let mut screen = output::Plain::new(&mut out, &mut err, true);
+        squire_cli::watch::Screen::party(&mut screen, &p);
+    }
+
+    let text = String::from_utf8(out).unwrap();
+    assert!(
+        !text.contains("\x1b"),
+        "an escape sequence would corrupt the JSON"
+    );
+    let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(parsed["characters"][0]["name"], "BAKSHI");
+}
+
+#[test]
+fn a_notice_is_named_and_kept_off_the_party_stream() {
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    {
+        let mut screen = output::Plain::new(&mut out, &mut err, false);
+        squire_cli::watch::Screen::notice(&mut screen, "the emulator ended. Until next time.");
+    }
+
+    assert_eq!(
+        String::from_utf8(err).unwrap(),
+        "gbs: the emulator ended. Until next time.\n"
+    );
+    assert!(out.is_empty());
+}
+
+/// A writer that has gone away, the way a closed pipe does.
+struct ClosedPipe;
+
+impl std::io::Write for ClosedPipe {
+    fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+#[should_panic(expected = "failed printing the party")]
+fn a_closed_pipe_ends_the_run_rather_than_watching_forever_in_silence() {
+    let p = party(PartyState::Live, vec![character("BAKSHI", 3, 7)]);
+    let mut err = Vec::new();
+    let mut screen = output::Plain::new(ClosedPipe, &mut err, false);
+
+    squire_cli::watch::Screen::party(&mut screen, &p);
+}
+
+#[test]
+fn plain_is_the_escape_from_the_hud_and_the_hud_needs_no_flag() {
+    // There is no --tui. An argument required to make the program work is
+    // not an argument, which is the same reasoning that killed --watch.
+    assert!(!parse(&[]).unwrap().plain);
+    assert!(parse(&["--plain"]).unwrap().plain);
+    assert!(!parse(&["--plain"]).unwrap().json);
+}
+
+#[test]
+fn the_usage_says_where_the_window_size_is_remembered() {
+    // A remembered thing the user cannot find is a hidden behaviour.
+    assert!(squire_cli::args::USAGE.contains("[hud]"));
+    assert!(squire_cli::args::USAGE.contains("--plain"));
+    for key in [
+        "q, Escape or Ctrl-C quits",
+        "up and down",
+        "a\nshows",
+        "c changes",
+        "Enter picks",
+    ] {
+        assert!(
+            squire_cli::args::USAGE.contains(key),
+            "{key} is undocumented"
+        );
+    }
 }

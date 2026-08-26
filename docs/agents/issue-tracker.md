@@ -46,6 +46,9 @@ Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
   `claimed`/`resolved`.
 - **Research write-ups**: `.scratch/<effort>/research/NNN-<slug>.md`, one per
   research ticket, linked from the ticket's answer.
+- **Prototypes**: `.scratch/<effort>/<name>/`, whatever shape the question
+  needs, with a `README.md` saying what to look at and what to decide. A
+  prototype ticket is answered by something Jeff can open, not by prose.
 - **Blocking**: a `Blocked by: NNN, NNN` line near the top. A ticket is
   unblocked when every file it lists is `resolved`.
 - **Frontier**: scan `.scratch/<effort>/issues/` for files that are open,
@@ -60,6 +63,11 @@ Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
 - `.scratch/squire-v1/` — the v1 map, 32 tickets, and its research. v1 is
   built. The map's destination is now the feature roadmap that follows it, and
   the roadmap itself lives at `docs/roadmap.md`, not in a ticket.
+- `.scratch/squire-hud/` — the HUD map and tickets 033 upward. Ticket numbers
+  continue the run rather than restarting, because a commit message citing
+  `033` must name exactly one ticket across the whole repo.
+- `.scratch/toolchain/` — how the repo is built and checked, rather than what
+  it does. Standalone tickets, no map. See its `README.md`.
 
 ## Not the tracker
 

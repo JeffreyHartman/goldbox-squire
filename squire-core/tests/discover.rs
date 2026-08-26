@@ -244,7 +244,10 @@ fn saves_within_finds_chrdat_files_one_child_down() {
     mkdir(&dir.join("SAVE"));
     write_save(&dir.join("SAVE"), "CHRDATA1.SAV", "HERO");
 
-    assert_eq!(discover::saves_within(&dir, &por()), Some(PathBuf::from("SAVE")));
+    assert_eq!(
+        discover::saves_within(&dir, &por()),
+        Some(PathBuf::from("SAVE"))
+    );
 }
 
 #[test]

@@ -221,10 +221,7 @@ fn the_registry_names_the_dos_start_command() {
 
 #[test]
 fn a_game_without_a_start_command_fails_to_parse() {
-    let text = include_str!("../tables/pool-of-radiance.toml").replace(
-        "start = \"START.EXE\"",
-        "",
-    );
+    let text = include_str!("../tables/pool-of-radiance.toml").replace("start = \"START.EXE\"", "");
 
     let err = games::Game::from_toml(&text).unwrap_err();
 

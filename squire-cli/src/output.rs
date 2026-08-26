@@ -3,8 +3,68 @@
 //! Two formats. The table is for a person reading a terminal. The JSON is the
 //! seam a later interface depends on, so it changes far more slowly.
 
+use std::io::{self, Stderr, Stdout, Write};
+
 use squire_core::record::Character;
 use squire_core::session::{Party, PartyState};
+
+use crate::watch::Screen;
+
+/// Clears the screen and puts the cursor at the top, so that the table
+/// redraws in place instead of scrolling.
+const CLEAR: &str = "\x1b[2J\x1b[H";
+
+/// The printed front end: a table, or JSON, written to a stream.
+///
+/// This is what `gbs` did before there was a HUD, and it is what a pipe or a
+/// script still wants. The escape sequence lives here rather than in the loop,
+/// because whether the screen is cleared is a property of how the party is
+/// shown.
+pub struct Plain<O: Write, E: Write> {
+    out: O,
+    err: E,
+    json: bool,
+}
+
+impl Plain<Stdout, Stderr> {
+    /// Writes the party to standard output and the notices to standard error,
+    /// so that a pipe reading the party is not fed the running commentary.
+    pub fn stdio(json: bool) -> Self {
+        Plain {
+            out: io::stdout(),
+            err: io::stderr(),
+            json,
+        }
+    }
+}
+
+impl<O: Write, E: Write> Plain<O, E> {
+    pub fn new(out: O, err: E, json: bool) -> Self {
+        Plain { out, err, json }
+    }
+}
+
+impl<O: Write, E: Write> Screen for Plain<O, E> {
+    fn party(&mut self, party: &Party) {
+        let text = if self.json {
+            format!("{}\n", json(party))
+        } else {
+            format!("{CLEAR}{}", table(party))
+        };
+        // A closed pipe ends the run. `gbs | head -1` used to die here,
+        // because the loop printed with `print!`, and that is what must not
+        // change: swallowing the error would leave gbs sweeping the
+        // emulator's memory forever, writing to nobody.
+        self.out
+            .write_all(text.as_bytes())
+            .and_then(|()| self.out.flush())
+            .expect("failed printing the party");
+    }
+
+    fn notice(&mut self, message: &str) {
+        let _ = writeln!(self.err, "gbs: {message}");
+    }
+}
 
 /// The party as a table a person can read at a glance during play.
 pub fn table(party: &Party) -> String {

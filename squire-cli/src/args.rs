@@ -27,6 +27,9 @@ pub struct Args {
     /// `kernel.yama.ptrace_scope`, so it is not the normal path.
     pub pid: Option<i32>,
     pub json: bool,
+    /// Print the table instead of opening the HUD. For pipes, scripts and
+    /// anything reading `gbs` as text.
+    pub plain: bool,
     pub help: bool,
     /// Milliseconds between redraws once a party was found.
     pub interval_ms: u64,
@@ -53,8 +56,8 @@ USAGE:
 A bare `gbs` asks which game, where it is (the first time only; the answer is
 remembered per game), and which save slot. Unlimited Adventures keeps saves
 per adventure module, so it gets one more question: which adventure. Then gbs
-starts the game, waits for the party, and redraws it until the emulator exits
-or you stop it. Each option below answers one of those questions in advance.
+starts the game, waits for the party, and shows it on a screen you can glance
+at until the emulator exits or you press q. Each option below answers one of those questions in advance.
 In the menus, 0 goes back. A fresh install with no saved game can still be
 started: save inside the game, then press Enter in gbs to pick the save.
 
@@ -72,12 +75,20 @@ OPTIONS:
                        dosbox, dosbox-staging, dosbox-x found on PATH. A
                        `dosbox` line in the config file makes it permanent.
     --interval <MS>    Milliseconds between redraws. Default: 500
+    --plain            Print a table into this terminal and keep reprinting
+                       it, rather than opening the HUD. For pipes, scripts
+                       and anything reading gbs as text. Implied by --json.
     --json             Print JSON rather than a table.
     --pid <PID>        Read an emulator this tool did not start. This works
                        only where the system already permits it, and gbs will
                        say so if it does not. Letting gbs start the game is
                        the supported path and needs no system change.
     -h, --help         Print this text.
+
+In the HUD: q, Escape or Ctrl-C quits, up and down move the highlight, a
+shows the ability scores, c changes how many cards sit across, and Enter picks
+a different save slot. The size you leave the window at is remembered in gbs's config file,
+under [hud], and used next time.
 
 Emulator settings live in a per-game file gbs creates in its config folder
 and never touches again; the first launch names it.
@@ -123,6 +134,7 @@ impl Args {
                         .map_err(|_| ArgError(format!("--interval needs a number, got `{raw}`")))?;
                 }
                 "--json" => args.json = true,
+                "--plain" => args.plain = true,
                 "-h" | "--help" => args.help = true,
                 other => {
                     return Err(ArgError(format!(
