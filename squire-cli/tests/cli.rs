@@ -246,3 +246,56 @@ fn a_long_name_does_not_break_the_table_alignment() {
         "every row is the same width: {widths:?}"
     );
 }
+
+// The printed screen: the loop hands it a party, it decides how that looks.
+
+#[test]
+fn the_printed_screen_clears_before_it_redraws_the_table() {
+    let p = party(PartyState::Live, vec![character("BAKSHI", 3, 7)]);
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    {
+        let mut screen = output::Plain::new(&mut out, &mut err, false);
+        squire_cli::watch::Screen::party(&mut screen, &p);
+    }
+
+    let text = String::from_utf8(out).unwrap();
+    assert!(text.starts_with("\x1b[2J\x1b[H"), "got: {text:?}");
+    assert!(text.contains("BAKSHI"));
+    assert!(err.is_empty(), "the table goes to standard output alone");
+}
+
+#[test]
+fn the_json_screen_does_not_clear_the_screen_under_a_pipe() {
+    let p = party(PartyState::Live, vec![character("BAKSHI", 3, 7)]);
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    {
+        let mut screen = output::Plain::new(&mut out, &mut err, true);
+        squire_cli::watch::Screen::party(&mut screen, &p);
+    }
+
+    let text = String::from_utf8(out).unwrap();
+    assert!(
+        !text.contains("\x1b"),
+        "an escape sequence would corrupt the JSON"
+    );
+    let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(parsed["characters"][0]["name"], "BAKSHI");
+}
+
+#[test]
+fn a_notice_is_named_and_kept_off_the_party_stream() {
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    {
+        let mut screen = output::Plain::new(&mut out, &mut err, false);
+        squire_cli::watch::Screen::notice(&mut screen, "the emulator ended. Until next time.");
+    }
+
+    assert_eq!(
+        String::from_utf8(err).unwrap(),
+        "gbs: the emulator ended. Until next time.\n"
+    );
+    assert!(out.is_empty());
+}

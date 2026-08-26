@@ -100,6 +100,12 @@ Settled in the grilling session of 2026-08-25, before any code.
   roadmap's HUD section no longer promises three named layouts. See
   `issues/033-hud-vocabulary-and-roadmap.md`.
 
+- **The watch loop has a drawing seam.** The loop moved into the library as
+  `watch::watch` and draws through a `Screen` trait, with the printed table as
+  the first implementation. The pause and the keyboard are a second trait,
+  `Keys`, because they are one wait. See
+  `issues/035-prefactor-renderer-seam.md`.
+
 ## Not yet specified
 
 - **What the roomy sizes hold.** Map, journal and combat were tabs in the

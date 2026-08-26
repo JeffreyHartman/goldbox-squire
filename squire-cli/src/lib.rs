@@ -5,6 +5,8 @@ pub mod attach;
 pub mod conf;
 pub mod config;
 pub mod emulator;
+pub mod keys;
 pub mod manual;
 pub mod output;
+pub mod watch;
 pub mod wizard;
