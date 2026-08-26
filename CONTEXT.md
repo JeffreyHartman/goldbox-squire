@@ -105,3 +105,38 @@ legal range is checked.
 
 **Unknown value.** A byte the record table has no name for. Squire reports it as
 unknown and shows the raw byte. It never guesses.
+
+## Showing
+
+**HUD.** Squire's live party on screen beside the game, in a window the user
+places and sizes. The concept, not the technology. It is the HUD whether it is
+drawn in a terminal or in pixels.
+
+**TUI.** The terminal implementation of the HUD. A pixel implementation, if one
+is ever written, is a second implementation of the same HUD. There is no other
+word for this idea. Squire does not call it a dock.
+
+**Plain output.** The printed table and the JSON: text written to a stream, for
+a pipe, a script, or a reader that is not a person watching a screen. What the
+HUD replaces for a person, and never replaces for a program.
+
+**Layout plan.** What the HUD shows at a given size: which fields are present,
+and where they sit. A size and a party go in, a plan comes out. The plan is
+computed by rules that answer "does this fit", never by a named mode, so there
+is no wide layout and no tall one to switch between.
+
+**Drop order.** The order fields leave the layout plan as the size shrinks, and
+return as it grows. One order, settled once, so that a narrow HUD and a wide one
+disagree about how much is shown and never about what matters.
+
+**Roomy.** A size with room to spare after everything the party needs. Roomy is
+a question the rules answer, not a measurement. What is roomy for a party panel
+alone is cramped for the same panel beside a map.
+
+**Wordmark.** Squire's name drawn large. It appears only when the size is roomy,
+because a HUD that reminds you what it is called is spending rows that the party
+wants.
+
+**App id.** The name the HUD's window reports to the desktop. Squire sets it so
+that the user can write one compositor rule and have the window land where they
+want it every launch. Squire cannot place its own window and never will.

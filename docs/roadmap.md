@@ -26,7 +26,8 @@ Every feature below is named in GBC's own feature list unless it is marked
 ## Built
 
 - Launch a game, find the party in emulator memory by character name, and print
-  it live. `--watch` is the default; `--json` is the seam a TUI or GUI will use.
+  it live. `--watch` is the default; `--json` is the seam the HUD and any other
+  reader will use.
 - The wizard asks three things: which game, which directory, which save slot.
 - All twelve games have character-record tables. Another game is a table, not
   code.
@@ -56,23 +57,21 @@ tables already exist.
 
 ## The HUD
 
-GBC pins its HUD above the DOSBox window. Squire will not: we established that
-the compositor will not anchor one window to another the way GBC's does, so the
-user places and sizes the Squire window by hand. That is a fair trade, and it
-buys something GBC does not have.
+GBC pins its HUD above the DOSBox window. Squire will not, because Wayland
+forbids a client positioning its own window. There is no flag and no protocol
+for it, so no amount of work makes the pin-above trick portable here.
 
-**Several layouts, switched by keyboard shortcut.** The layout is a Squire
-choice, not a window-manager trick:
+What Squire can do is name its window. The HUD sets an app id, and the user
+writes one KWin or Hyprland rule against that name, once, after which the window
+lands where they want it on every launch. Squire sets the size itself and
+remembers the last one. Position stays the compositor's to decide.
 
-- **Wide.** For above or below the DOSBox window. Closest to GBC's HUD.
-- **Thin and tall.** For beside the DOSBox window. This is the ultrawide layout,
-  and it is the one Jeff will use.
-- **Fullscreen.** For a second monitor. More room than the HUD needs, so it can
-  show the party, effects, and the map at once.
-
-Window placement and sizing stay manual until something proves it can be
-automated per compositor. Remembering the last geometry is cheap and should
-happen early.
+**One layout, driven by rules.** There are no named modes to switch between. The
+rules ask whether a thing fits at the current size and add or drop it
+accordingly, in a settled order, so a window that lands between two sizes gets
+the right answer rather than the nearer name. Content differs by size rather
+than merely reflowing. Small is the party and nothing else, and only a roomy
+size earns a map or a journal beside it.
 
 ## Writing to memory
 
@@ -135,8 +134,10 @@ encoding. Build that codec once, first.
 Features GBC has no equivalent for, because they follow from being a native
 Linux program rather than a Windows overlay.
 
-- **A TUI.** The obvious first interface past the current printed table.
-- **A GUI**, if the TUI proves the HUD layouts are worth more polish.
+- **The HUD.** The obvious first interface past the printed table, drawn as a
+  TUI. See the section above.
+- **A pixel HUD**, if the TUI proves the idea is worth more polish. The map is
+  the part most likely to want real pixels.
 - **A structural anchor.** Today the anchor is a character name read from the
   save files, which is why Squire works where GBC fails. An anchor that needs no
   save file at all would let Squire attach to a game in progress it never

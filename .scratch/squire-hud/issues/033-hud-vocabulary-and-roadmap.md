@@ -1,7 +1,7 @@
 # 033 — Write down the HUD vocabulary and correct the roadmap
 
 Type: `wayfinder:task` (AFK)
-Status: open
+Status: resolved
 Triage: `ready-for-agent`
 Blocked by: none
 
@@ -22,12 +22,27 @@ decisions. The decisions live in the map.
 
 ## Acceptance criteria
 
-- [ ] `CONTEXT.md` defines HUD as the concept, and TUI as the terminal
+- [x] `CONTEXT.md` defines HUD as the concept, and TUI as the terminal
       implementation of it
-- [ ] `CONTEXT.md` defines the layout plan: what is shown at a given size
-- [ ] "Dock" appears nowhere in the repo as a name for the HUD
-- [ ] The roadmap's "The HUD" section describes one rules-driven layout, not
+- [x] `CONTEXT.md` defines the layout plan: what is shown at a given size
+- [x] "Dock" appears nowhere in the repo as a name for the HUD
+- [x] The roadmap's "The HUD" section describes one rules-driven layout, not
       three named ones
-- [ ] The roadmap says Wayland forbids self-placement, that Squire sets an
+- [x] The roadmap says Wayland forbids self-placement, that Squire sets an
       app-id, and that a compositor rule is the user's one-time answer
-- [ ] Nothing in `CONTEXT.md` names a module, a file, or a number of columns
+- [x] Nothing in `CONTEXT.md` names a module, a file, or a number of columns
+
+## Answer
+
+`CONTEXT.md` gained a **Showing** section: HUD, TUI, plain output, layout plan,
+drop order, roomy, wordmark, app id. It stays a glossary. No module, file, or
+column count is named in it.
+
+The roadmap's "The HUD" section now says Wayland forbids self-placement, that
+Squire sets an app id so one compositor rule answers placement forever, and that
+there is one rules-driven layout rather than Wide, Thin and tall, and Fullscreen.
+The "Squire only" list said "A TUI" and "A GUI"; it now says the HUD drawn as a
+TUI, and a pixel HUD later.
+
+"Dock" appears in the repo only in this effort's map, saying the project does not
+use the word, and in a v1 research file describing GBC's own map docking.

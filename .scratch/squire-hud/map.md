@@ -95,6 +95,11 @@ Settled in the grilling session of 2026-08-25, before any code.
   not blocked, and not a reason to abandon the terminal: a character-grid map
   might read fine.
 
+- **The vocabulary is written down.** HUD, TUI, plain output, layout plan, drop
+  order, roomy, wordmark and app id are defined in `CONTEXT.md`, and the
+  roadmap's HUD section no longer promises three named layouts. See
+  `issues/033-hud-vocabulary-and-roadmap.md`.
+
 ## Not yet specified
 
 - **What the roomy sizes hold.** Map, journal and combat were tabs in the

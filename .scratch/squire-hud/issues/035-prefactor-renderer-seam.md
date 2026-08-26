@@ -1,7 +1,7 @@
 # 035 — Prefactor: the watch loop gets a renderer seam
 
 Type: `wayfinder:task` (AFK)
-Status: open
+Status: claimed
 Triage: `ready-for-agent`
 Blocked by: none
 
