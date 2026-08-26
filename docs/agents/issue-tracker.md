@@ -60,6 +60,9 @@ Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
 - `.scratch/squire-v1/` — the v1 map, 32 tickets, and its research. v1 is
   built. The map's destination is now the feature roadmap that follows it, and
   the roadmap itself lives at `docs/roadmap.md`, not in a ticket.
+- `.scratch/squire-hud/` — the HUD map and tickets 033 upward. Ticket numbers
+  continue the run rather than restarting, because a commit message citing
+  `033` must name exactly one ticket across the whole repo.
 
 ## Not the tracker
 
