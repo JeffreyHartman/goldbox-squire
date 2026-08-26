@@ -321,3 +321,35 @@ fn tempdir(tag: &str) -> PathBuf {
     std::fs::create_dir_all(&base).unwrap();
     base
 }
+
+#[test]
+fn the_window_size_is_remembered_under_a_key_that_says_what_it_is() {
+    let config = Config::from_toml("[hud]\ncolumns = 120\nrows = 40\n").unwrap();
+    let hud = config.hud.expect("the size was stored");
+    assert_eq!((hud.columns, hud.rows), (120, 40));
+    assert!(config.to_toml().unwrap().contains("[hud]"));
+}
+
+#[test]
+fn a_nonsensical_stored_size_is_ignored_rather_than_fatal() {
+    // A terminal that does not know its own size reports zero, and a hand
+    // edit can say anything at all. Neither is worth refusing to start over.
+    for text in [
+        "[hud]\ncolumns = 0\nrows = 40\n",
+        "[hud]\ncolumns = 120\nrows = 0\n",
+        "[hud]\ncolumns = \"wide\"\nrows = 40\n",
+        "[hud]\n",
+    ] {
+        let config = Config::from_toml(text).unwrap_or_else(|e| panic!("{text:?}: {e}"));
+        assert!(config.hud.is_none(), "{text:?} was believed");
+    }
+}
+
+#[test]
+fn a_config_from_before_the_hud_loads_unchanged() {
+    let before = "last_game = \"pool-of-radiance\"\n";
+    let config = Config::from_toml(before).unwrap();
+    assert_eq!(config.last_game.as_deref(), Some("pool-of-radiance"));
+    assert!(config.hud.is_none());
+    assert!(!config.to_toml().unwrap().contains("hud"));
+}

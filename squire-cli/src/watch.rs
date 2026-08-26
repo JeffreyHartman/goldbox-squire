@@ -32,6 +32,9 @@ pub enum Interrupt {
     None,
     /// A different save slot was chosen, with the names to look for.
     Repick { slot: char, names: Vec<String> },
+    /// The user asked to stop. Ending the run is the loop's job, not the
+    /// front end's, because the loop is what owns the emulator handle.
+    Quit,
 }
 
 /// The pause between polls, and the user's chance to interrupt it.
@@ -152,18 +155,21 @@ pub fn watch<R: Reader>(
             timing.waiting_poll
         };
 
-        if let Interrupt::Repick {
-            slot: new_slot,
-            names: new_names,
-        } = keys.wait(pause)?
-        {
-            slot = Some(new_slot);
-            names = new_names;
-            session.retarget(names.clone());
-            found_once = false;
-            hinted = false;
-            searching_since = Instant::now();
-            screen.notice(&waiting_for(slot));
+        match keys.wait(pause)? {
+            Interrupt::None => {}
+            Interrupt::Quit => return Ok(()),
+            Interrupt::Repick {
+                slot: new_slot,
+                names: new_names,
+            } => {
+                slot = Some(new_slot);
+                names = new_names;
+                session.retarget(names.clone());
+                found_once = false;
+                hinted = false;
+                searching_since = Instant::now();
+                screen.notice(&waiting_for(slot));
+            }
         }
     }
 }

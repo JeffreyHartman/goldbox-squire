@@ -394,3 +394,35 @@ fn repicking_points_the_watch_at_the_new_party() {
     assert!(screen.said("save slot J"), "{:?}", screen.notices);
     assert!(screen.drawn() > 0, "the new party is drawn");
 }
+
+/// A keyboard that quits after the first pause.
+struct Quits;
+
+impl Keys for Quits {
+    fn wait(&mut self, _pause: Duration) -> Result<Interrupt, String> {
+        Ok(Interrupt::Quit)
+    }
+}
+
+#[test]
+fn the_user_quitting_ends_the_watch_without_an_error() {
+    // The HUD's q key. Ending the run is the loop's job, because the loop is
+    // what holds the emulator handle.
+    let (mem, names) = emulator_with_party();
+    let mut session = Session::new(mem, table(), names.clone());
+    let screen = &mut Recorder::default();
+    let mut running = Countdown(100);
+
+    let result = watch::watch(
+        &mut session,
+        &instant(),
+        screen,
+        &mut Quits,
+        Some(&mut running),
+        Some('A'),
+        names,
+    );
+
+    assert!(result.is_ok());
+    assert_eq!(screen.drawn(), 1, "one draw, then the user stopped it");
+}

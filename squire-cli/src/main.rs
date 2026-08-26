@@ -7,8 +7,10 @@ use std::time::Duration;
 use squire_cli::args::{Args, USAGE};
 use squire_cli::attach;
 use squire_cli::conf;
-use squire_cli::config::Config;
+use squire_cli::config::{Config, Hud as HudSize};
+use squire_cli::hud;
 use squire_cli::keys;
+use squire_cli::layout::{Sitting, Size};
 use squire_cli::manual;
 use squire_cli::output;
 use squire_cli::watch::{self, Watch};
@@ -58,6 +60,7 @@ fn run() -> Result<(), String> {
             Some(resolved.slot),
             resolved.names,
             None,
+            &mut config,
         );
     }
 
@@ -180,10 +183,17 @@ fn run() -> Result<(), String> {
         slot,
         names,
         Some(&repick_dir),
+        &mut config,
     )
 }
 
-/// Wires the watch loop to the printed front end and the real keyboard.
+/// Wires the watch loop to a front end and a keyboard.
+///
+/// The HUD is what a person gets, and `--plain` is the escape. `args.rs`
+/// already argues that an argument required to make the program work is not
+/// an argument, which is why there is no `--watch`; the same reasoning makes
+/// the HUD the default rather than a `--tui` opt-in.
+#[allow(clippy::too_many_arguments)]
 fn run_watch<R: squire_core::mem::Reader>(
     session: &mut Session<R>,
     args: &Args,
@@ -192,22 +202,91 @@ fn run_watch<R: squire_core::mem::Reader>(
     slot: Option<char>,
     names: Vec<String>,
     save_dir: Option<&Path>,
+    config: &mut Config,
 ) -> Result<(), String> {
     let timing = Watch {
         interval: Duration::from_millis(args.interval_ms),
         ..Watch::default()
     };
-    let mut screen = output::Plain::stdio(args.json);
-    let mut keys = keys::Stdin::new(game, save_dir);
-    watch::watch(
+    let running = running.map(|r| r as &mut dyn watch::Alive);
+
+    // JSON is for a program, and a program is never watching a screen. A
+    // stream that is not a terminal cannot hold a HUD at all, and saying so
+    // beats failing to take over something that is not there.
+    let plain = args.plain || args.json || !is_terminal();
+    if plain && !(args.plain || args.json) {
+        eprintln!("gbs: standard output is not a terminal, so the table is printed instead.");
+    }
+
+    if plain {
+        let mut screen = output::Plain::stdio(args.json);
+        let mut keys = keys::Stdin::new(game, save_dir);
+        return watch::watch(
+            session,
+            &timing,
+            &mut screen,
+            &mut keys,
+            running,
+            slot,
+            names,
+        );
+    }
+
+    let sitting = Sitting {
+        game: game.name.clone(),
+        slot,
+        panel: "party".to_string(),
+        note: None,
+    };
+    let remembered = config.hud.map(|h| Size {
+        cols: h.columns,
+        rows: h.rows,
+    });
+    let interface = hud::Hud::start(sitting, remembered)?;
+    let mut screen = interface.screen();
+    let mut keys = interface.keys(game, save_dir);
+    let outcome = watch::watch(
         session,
         &timing,
         &mut screen,
         &mut keys,
-        running.map(|r| r as &mut dyn watch::Alive),
+        running,
         slot,
         names,
-    )
+    );
+
+    // Recorded on the way out, whether the run ended well or badly: the user
+    // resized the window either way, and losing that over an error would mean
+    // resizing it again next launch.
+    let size = interface.size();
+    remember_size(config, size);
+    drop(interface);
+    outcome
+}
+
+/// Writes the size the HUD was left at into the config.
+///
+/// A size of zero is what a terminal reports when it does not know its own,
+/// and it is not worth writing down.
+fn remember_size(config: &mut Config, size: Size) {
+    let hud = HudSize {
+        columns: size.cols,
+        rows: size.rows,
+    };
+    if !hud.is_sane() || config.hud == Some(hud) {
+        return;
+    }
+    config.hud = Some(hud);
+    if let Err(e) = config.save() {
+        eprintln!("gbs: warning: could not remember the window size: {e}");
+    }
+}
+
+/// Whether standard output is a terminal, asked of the kernel rather than of
+/// an environment variable, because a variable is a guess.
+fn is_terminal() -> bool {
+    use crossterm::tty::IsTty;
+    std::io::stdout().is_tty()
 }
 
 /// The folder gbs's own files live in: the config file's folder.

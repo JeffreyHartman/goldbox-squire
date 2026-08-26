@@ -1,7 +1,7 @@
 # 037 — The HUD draws the party and reflows as you resize
 
 Type: `wayfinder:task` (AFK)
-Status: open
+Status: resolved
 Triage: `ready-for-agent`
 Blocked by: 035, 036
 
@@ -31,13 +31,38 @@ needed anyway and costs one row rather than sixteen columns.
 
 ## Acceptance criteria
 
-- [ ] `gbs` with no arguments shows the party in a full-screen terminal
+- [x] `gbs` with no arguments shows the party in a full-screen terminal
       interface
-- [ ] `--plain` produces the pre-existing printed table, unchanged
-- [ ] Resizing the terminal reflows immediately, with fields dropping and
+- [x] `--plain` produces the pre-existing printed table, unchanged
+- [x] Resizing the terminal reflows immediately, with fields dropping and
       returning in the order 036 encodes
-- [ ] The interface is usable at a hostile size without panicking, truncating
+- [x] The interface is usable at a hostile size without panicking, truncating
       mid-character, or drawing outside its area
-- [ ] No sixteen-column menu, and no wordmark except when roomy
-- [ ] The terminal is restored on exit, including after an error
-- [ ] Drawing code contains no rule about what to show
+- [x] No sixteen-column menu, and no wordmark except when roomy
+- [x] The terminal is restored on exit, including after an error
+- [x] Drawing code contains no rule about what to show
+
+## Answer
+
+`squire-cli/src/hud/`, three files: `mod.rs` holds the terminal and the two
+watch-loop seams, `draw.rs` turns a plan into cells, `theme.rs` is the palette
+carried over from the spike. Tests are `squire-cli/tests/hud.rs`, drawn into a
+`Buffer` with no terminal anywhere.
+
+`gbs` opens the HUD. `--plain` prints the table, and `--json` implies it. There
+is no `--tui`.
+
+**One thing was added that the ticket did not ask for.** When standard output
+is not a terminal, `gbs` prints the table and says so on standard error. A HUD
+cannot take over a pipe, and `gbs | head -1` working is a thing ticket 035's
+review already fought for. The message is what keeps it from being a hidden
+behaviour.
+
+**`draw.rs` decides colour and nothing else.** It asks the plan which lines a
+card has and where the cards go, and it draws that. Its only judgements are
+which colour a hit point line gets from how many points are left, and which
+one a condition gets from whether it is `okay`. Both come from the numbers,
+never from the size.
+
+The terminal is restored from a `Drop` impl and from a panic hook that chains
+to the one it replaced, so an error and a panic both leave a usable shell.

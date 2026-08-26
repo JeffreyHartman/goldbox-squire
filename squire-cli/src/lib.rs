@@ -5,6 +5,7 @@ pub mod attach;
 pub mod conf;
 pub mod config;
 pub mod emulator;
+pub mod hud;
 pub mod keys;
 pub mod layout;
 pub mod manual;

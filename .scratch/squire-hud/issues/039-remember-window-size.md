@@ -1,7 +1,7 @@
 # 039 — Squire remembers the window size
 
 Type: `wayfinder:task` (AFK)
-Status: open
+Status: resolved
 Triage: `ready-for-agent`
 Blocked by: 037
 
@@ -23,10 +23,29 @@ a program cannot resize the terminal it was launched inside.
 
 ## Acceptance criteria
 
-- [ ] The size at exit is written to the config, under a global key
-- [ ] The key is human-readable and its name says what it is
-- [ ] `--help` or the config file itself makes clear where the size is
+- [x] The size at exit is written to the config, under a global key
+- [x] The key is human-readable and its name says what it is
+- [x] `--help` or the config file itself makes clear where the size is
       remembered, so it is not a hidden behaviour
-- [ ] A missing or nonsensical stored size is ignored, not fatal
-- [ ] Existing config files load unchanged, and the migration path already in
+- [x] A missing or nonsensical stored size is ignored, not fatal
+- [x] Existing config files load unchanged, and the migration path already in
       the config module keeps working
+
+## Answer
+
+`[hud]` in the config file, with `columns` and `rows`. Global, one entry, and
+the key says what it is.
+
+The size is read from the terminal at every draw and written on the way out of
+`run_watch`, whether the run ended well or badly. The user resized the window
+either way, and losing that to an error would mean resizing it again next
+launch.
+
+A stored zero is ignored: that is what a terminal reports when it does not
+know its own size, and it reaches the file when a run ends before the first
+draw. A hand-edited nonsense value is ignored too, and the rest of the config
+still loads, because the field is parsed on its own rather than as part of the
+whole file. `--help` says where the size lives.
+
+Nothing acts on the remembered size yet. A program cannot resize the terminal
+it was launched inside, which is 043's job.

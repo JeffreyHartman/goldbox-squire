@@ -1,7 +1,7 @@
 # 040 — Keys: quit, character selection, and the slot repick
 
 Type: `wayfinder:task` (AFK)
-Status: open
+Status: resolved
 Triage: `ready-for-agent`
 Blocked by: 037
 
@@ -27,10 +27,37 @@ does not need a menu built for it.
 
 ## Acceptance criteria
 
-- [ ] A documented key quits, and the terminal is restored
-- [ ] The highlight moves through the party and does not run off either end
-- [ ] The slot repick still works, and the wizard's question is readable while
+- [x] A documented key quits, and the terminal is restored
+- [x] The highlight moves through the party and does not run off either end
+- [x] The slot repick still works, and the wizard's question is readable while
       the terminal is in raw mode
-- [ ] Repicking retargets the session and the HUD shows the new party
-- [ ] Number keys are reserved for panels, even though only one panel exists
-- [ ] The keys in use are visible somewhere without reading the source
+- [x] Repicking retargets the session and the HUD shows the new party
+- [x] Number keys are reserved for panels, even though only one panel exists
+- [x] The keys in use are visible somewhere without reading the source
+
+## Answer
+
+In `squire-cli/src/hud/mod.rs`, `HudKeys`.
+
+`q`, Escape and Ctrl-C quit, through a new `Interrupt::Quit` that the watch
+loop turns into a clean return. Ending the run is the loop's job because the
+loop is what holds the emulator handle. Quitting the HUD does not stop the
+game: ticket 011 settled that a tool which reads the game never takes the game
+down with it.
+
+Up and down, or `k` and `j`, move the highlight. It stops at each end rather
+than wrapping, because a HUD glanced at sideways should not move the highlight
+somewhere surprising.
+
+`a` toggles the ability scores. `c` steps through the arrangements the party
+divides into evenly and then back to letting the rule decide, which is how a
+short wide window gets both of 034's answers. The number keys are reserved for
+panels; only `1` has a screen behind it. The keys are printed on the status
+line and in `--help`.
+
+**The slot repick.** The HUD steps aside for the length of the question. It
+leaves raw mode and the alternate screen, the wizard prints its menu and reads
+a line exactly as it always has, and the HUD takes the terminal back
+afterwards, whether the wizard succeeded or failed. That is far less code than
+a second copy of the menu drawn on screen, and it keeps one wizard rather than
+two that can disagree about what a save slot is.

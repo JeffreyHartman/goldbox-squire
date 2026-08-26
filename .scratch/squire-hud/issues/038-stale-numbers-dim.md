@@ -1,7 +1,7 @@
 # 038 — Stale numbers dim
 
 Type: `wayfinder:task` (AFK)
-Status: open
+Status: resolved
 Triage: `ready-for-agent`
 Blocked by: 037
 
@@ -25,11 +25,35 @@ grey rather than keep asserting hit points that no longer exist.
 
 ## Acceptance criteria
 
-- [ ] A lost anchor dims the party block and states the reason on the status
+- [x] A lost anchor dims the party block and states the reason on the status
       line
-- [ ] A partial party is distinguishable from a lost one
-- [ ] Recovering the anchor restores full brightness with no flicker
-- [ ] The dim state is decided in 036's layout plan, not in drawing code, and
+- [x] A partial party is distinguishable from a lost one
+- [x] Recovering the anchor restores full brightness with no flicker
+- [x] The dim state is decided in 036's layout plan, not in drawing code, and
       is covered by its tests
-- [ ] Dimming survives at a hostile size, where the status line may be the
+- [x] Dimming survives at a hostile size, where the status line may be the
       only thing that fits
+
+## Answer
+
+Folded into 036 and 037, which is where the ticket asked for it.
+
+`Liveness` in the layout plan has four values rather than three. `Live` and
+`Partial` are the session's own states. The other two split what the session
+reports as not-found: `Waiting` is a run that never found a party, and `Lost`
+is one that had a party and lost the anchor. Only `Lost` dims. Without the
+split, the first frame of every run would have said "anchor lost".
+
+The session returns an empty character list when the anchor is gone, so the
+HUD keeps the last characters it read and hands them back with the current
+state. That is what puts numbers on the dimmed screen at all.
+
+Dimming greys the whole party block and drops the colour coding, including the
+red of a bad condition and the highlight. A dimmed red still reads as an alarm,
+and the point of dimming is that none of it is live. The status line turns red
+and says "anchor lost, rescanning", and it survives at a size where it is the
+only row that fits.
+
+A partial party keeps its colours and its highlight, and the status line says
+how many are shown. It is not the same thing as a lost one and does not look
+like one.

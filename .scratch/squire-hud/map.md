@@ -134,6 +134,25 @@ Settled in the grilling session of 2026-08-25, before any code.
   dims. 034's seven recorded sizes are pinned as tests. See
   `issues/036-layout-plan.md`.
 
+- **The HUD is what `gbs` does, and `--plain` is the escape.** The party is
+  drawn on a screen you glance at, it reflows as the window changes, the
+  terminal comes back after an error or a panic, and a pipe still gets the
+  table. See `issues/037-hud-draws-and-reflows.md`.
+
+- **Stale numbers dim, and waiting is not the same as lost.** The plan's
+  `Liveness` splits a run that never found a party from one that lost the
+  anchor, because the session reports both as not-found. Only the second dims.
+  See `issues/038-stale-numbers-dim.md`.
+
+- **The window size is remembered under `[hud]`.** Read from the terminal at
+  every draw, written on the way out, ignored when it is nonsense. Nothing
+  acts on it until 043. See `issues/039-remember-window-size.md`.
+
+- **The keys are settled, and the slot repick survives raw mode.** `q` quits,
+  the arrows move the highlight, `a` and `c` are the toggles, the number keys
+  are reserved, and Enter steps the HUD aside so the one wizard asks the one
+  question. See `issues/040-hud-keys.md`.
+
 ## Not yet specified
 
 - **What the roomy sizes hold.** Map, journal and combat were tabs in the

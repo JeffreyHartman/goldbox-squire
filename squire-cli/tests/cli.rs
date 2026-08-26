@@ -325,3 +325,20 @@ fn a_closed_pipe_ends_the_run_rather_than_watching_forever_in_silence() {
 
     squire_cli::watch::Screen::party(&mut screen, &p);
 }
+
+#[test]
+fn plain_is_the_escape_from_the_hud_and_the_hud_needs_no_flag() {
+    // There is no --tui. An argument required to make the program work is
+    // not an argument, which is the same reasoning that killed --watch.
+    assert!(!parse(&[]).unwrap().plain);
+    assert!(parse(&["--plain"]).unwrap().plain);
+    assert!(!parse(&["--plain"]).unwrap().json);
+}
+
+#[test]
+fn the_usage_says_where_the_window_size_is_remembered() {
+    // A remembered thing the user cannot find is a hidden behaviour.
+    assert!(squire_cli::args::USAGE.contains("[hud]"));
+    assert!(squire_cli::args::USAGE.contains("--plain"));
+    assert!(squire_cli::args::USAGE.contains("q quits"));
+}

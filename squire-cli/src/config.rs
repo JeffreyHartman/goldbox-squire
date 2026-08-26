@@ -63,6 +63,29 @@ impl Install {
     }
 }
 
+/// The size the user left the HUD's window at.
+///
+/// Global, not per game: window size is a property of where the user sits,
+/// not of which game they loaded, and a per-game key would mean fixing twelve
+/// entries after changing a monitor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Hud {
+    pub columns: u16,
+    pub rows: u16,
+}
+
+impl Hud {
+    /// Whether the stored size could be a window.
+    ///
+    /// A zero is what a terminal reports when it does not know its own size,
+    /// and it reaches the file when a run ends before the first draw. It is
+    /// ignored rather than fatal: a stale config file must never be a reason
+    /// gbs will not start.
+    pub fn is_sane(&self) -> bool {
+        self.columns > 0 && self.rows > 0
+    }
+}
+
 /// What is remembered between runs.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
@@ -87,6 +110,11 @@ pub struct Config {
     /// that can find the new game's installs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub known_games: Vec<String>,
+    /// The size the HUD's window was left at. Recorded rather than asked:
+    /// the wizard asks about things Squire cannot observe, and this is not
+    /// one of those.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hud: Option<Hud>,
 }
 
 /// Every file version at once. The old keys are read so an existing user's
@@ -111,6 +139,9 @@ struct Raw {
     extra_roots: Vec<String>,
     #[serde(default)]
     known_games: Vec<String>,
+    /// Left raw so that a hand-edited nonsense value costs the user their
+    /// window size and not the rest of the file.
+    hud: Option<toml::Value>,
 }
 
 impl Config {
@@ -148,6 +179,10 @@ impl Config {
             installs: raw.installs,
             extra_roots: raw.extra_roots,
             known_games: raw.known_games,
+            hud: raw
+                .hud
+                .and_then(|v| v.try_into::<Hud>().ok())
+                .filter(Hud::is_sane),
         };
 
         // v2: the single last choice named both the game and its directory.
