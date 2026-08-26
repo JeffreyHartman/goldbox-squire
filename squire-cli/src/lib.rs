@@ -8,5 +8,6 @@ pub mod emulator;
 pub mod keys;
 pub mod manual;
 pub mod output;
+pub mod terminals;
 pub mod watch;
 pub mod wizard;

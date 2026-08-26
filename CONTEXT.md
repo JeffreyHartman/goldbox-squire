@@ -137,6 +137,12 @@ alone is cramped for the same panel beside a map.
 because a HUD that reminds you what it is called is spending rows that the party
 wants.
 
+**Terminal table.** Which terminals Squire can open a window in, and how each
+one is asked for a window name and a size in character cells. Data, like a
+record table, with one difference: a record table is Squire's, and a terminal
+entry can be the user's. A terminal Squire does not know is still launched, at
+whatever size the terminal chose.
+
 **App id.** The name the HUD's window reports to the desktop. Squire sets it so
 that the user can write one compositor rule and have the window land where they
 want it every launch. Squire cannot place its own window and never will.

@@ -48,3 +48,6 @@ would have asked. No hidden traps.
   `docs/README.md` to rebuild.
 - `squire-core/tables/` — one TOML character-record table per game. Another game
   is a table, not code.
+- `squire-cli/terminals.toml` — the terminals the HUD can open a window in.
+  Also a table, and the only one a user can extend: their own
+  `terminals.toml` in Squire's config folder is merged over it by name.

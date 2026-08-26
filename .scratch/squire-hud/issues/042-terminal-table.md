@@ -1,7 +1,7 @@
 # 042 — The terminal table
 
 Type: `wayfinder:task` (AFK)
-Status: open
+Status: resolved
 Triage: `ready-for-agent`
 Blocked by: none
 
@@ -28,11 +28,40 @@ says the size could not be set.
 
 ## Acceptance criteria
 
-- [ ] Compiled-in entries for the terminals that support an app-id and a
+- [x] Compiled-in entries for the terminals that support an app-id and a
       cell-based size
-- [ ] A user file, merged over the defaults by terminal name
-- [ ] Adding an unknown terminal needs no rebuild
-- [ ] A malformed user entry names the file and the entry, and does not stop
+- [x] A user file, merged over the defaults by terminal name
+- [x] Adding an unknown terminal needs no rebuild
+- [x] A malformed user entry names the file and the entry, and does not stop
       Squire from running
-- [ ] The difference from the game tables is recorded where a reader will find
+- [x] The difference from the game tables is recorded where a reader will find
       it
+
+## Answer
+
+`squire-cli/terminals.toml` is the compiled-in table, `squire-cli/src/terminals.rs`
+reads it, and ten tests cover the merge. The user file is
+`terminals.toml` in Squire's config folder, beside `config.toml`, merged over
+the defaults by terminal name. Squire never writes it.
+
+Three entries: foot, alacritty and kitty. Each one gets three fields, because
+two were not enough. `app_id` and `size` are what the ticket asked for, and
+`exec` is what goes between the options and the command, since alacritty needs
+`-e` there, kitty needs nothing, and 043 cannot spawn anything without knowing
+which. Placeholders are `{id}`, `{cols}` and `{rows}`.
+
+**What is verified and what is not.** alacritty and kitty were checked against
+the installed binaries: `alacritty --help`, `man 5 alacritty` for
+`window.dimensions` in cells, and `/usr/share/doc/kitty/kitty.conf` for the `c`
+suffix that makes `initial_window_width` mean cells. foot is not installed here
+and its two flags come from its documentation. Somebody should run it before
+043 ships.
+
+Deliberately not compiled in: konsole and gnome-terminal, which have no
+per-instance window name; wezterm and ghostty, which probably can do both but
+which I could not check. All four are still launchable, and all four are one
+user file entry away.
+
+The difference from the game tables is in `CONTEXT.md` under **Terminal table**
+and in `AGENTS.md` under "Where things are": a record table is Squire's, a
+terminal entry can be the user's.

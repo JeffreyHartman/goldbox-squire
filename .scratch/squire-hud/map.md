@@ -106,6 +106,11 @@ Settled in the grilling session of 2026-08-25, before any code.
   `Keys`, because they are one wait. See
   `issues/035-prefactor-renderer-seam.md`.
 
+- **The terminal table exists.** foot, alacritty and kitty are compiled in with
+  three fields each: how to name the window, how to ask for a size in cells,
+  and what goes before the command. A user file in Squire's config folder is
+  merged over it by name. See `issues/042-terminal-table.md`.
+
 ## Not yet specified
 
 - **What the roomy sizes hold.** Map, journal and combat were tabs in the
