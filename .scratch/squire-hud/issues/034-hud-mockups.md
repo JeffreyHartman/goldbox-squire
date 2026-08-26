@@ -1,8 +1,8 @@
 # 034 — Mockups: the party at four sizes
 
 Type: `wayfinder:prototype`
-Status: claimed
-Triage: `ready-for-human`
+Status: resolved
+Triage: `ready-for-agent`
 Blocked by: 033
 
 ## What to build
@@ -35,8 +35,8 @@ building it before 036 rather than after.
       one and one with a status
 - [x] Each mockup shows which fields survived at that size, and the roomy one
       shows the wordmark
-- [ ] Jeff has looked at them and either confirmed the drop order or changed it
-- [ ] Whatever he decides is recorded on this ticket, because 036 reads it
+- [x] Jeff has looked at them and either confirmed the drop order or changed it
+- [x] Whatever he decides is recorded on this ticket, because 036 reads it
 
 ## First pass: tables. Superseded.
 
@@ -99,3 +99,27 @@ sidecar width, six across against three across two down at 160x14, and whether
 to keep the wordmark.
 
 **The answers still go under this heading.** 036 reads it, not the map.
+
+## Answered by Jeff, 2026-08-25
+
+- **Cards, not tables.** Confirmed. The tables stay under `table-*.txt` as a
+  fallback only.
+- **The sidecar is 60 columns.** That is the width Squire starts at on a first
+  run, before it has any remembered geometry.
+- **Two columns of cards is a wanted answer, not an accident.** 80x40 and
+  110x50 both land there and both are right.
+- **160x14 keeps both answers.** Three across is what the rule picks. Six
+  across is available because people should have the choice.
+- **Ability scores are off by default and are a key, not a width rule.** They
+  make the cards look busy, and they barely change during play. There is no
+  half measure: no card ever shows one score. When the key is pressed the whole
+  party gets one line of six numbers, slashed, no labels, in the order every
+  Gold Box screen prints them. Percentile strength goes in brackets, `18(72)`,
+  because it has to survive the slashes.
+
+036 must take the toggle as an input rather than deciding it. The layout plan
+answers "does this fit". The toggle answers "did the user ask for it". Those
+are different questions and mixing them puts a preference inside a rule.
+
+Still open, and none of it blocks 036: whether the wordmark survives, what else
+gets a key when THAC0 and encumbrance land, and whether the tables go.

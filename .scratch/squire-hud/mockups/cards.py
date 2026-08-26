@@ -32,10 +32,13 @@ class Char:
     # add later, and the card is shaped so that it can.
     effects: list
     abilities: tuple  # str int wis dex con cha
+    # Percentile strength, for the fighters that rolled it. None for everyone
+    # else. It has to survive the slash form, which is why it is in brackets.
+    str_pct: int = None
 
 
 PARTY = [
-    Char("THRENDER GRONE", "fighter", 5, 42, 42, 2, 16, ["okay"], (18, 9, 11, 16, 17, 10)),
+    Char("THRENDER GRONE", "fighter", 5, 42, 42, 2, 16, ["okay"], (18, 9, 11, 16, 17, 10), 72),
     Char("BROTHER SEAN", "cleric", 4, 26, 26, 4, 18, ["okay"], (14, 10, 17, 12, 15, 13)),
     Char("AMRYL", "mage", 4, 14, 14, 8, 19, ["okay"], (9, 18, 12, 16, 11, 14)),
     Char("KEIRA", "fighter/thief", 5, 18, 31, 5, 17, ["okay"], (16, 13, 10, 18, 14, 12)),
@@ -76,14 +79,37 @@ def fit(text, width):
     return text if len(text) <= width else text[: width - 1] + "…"
 
 
-def abilities_line(c):
-    return " · ".join(
-        f"{n} {v}"
-        for n, v in zip(("str", "int", "wis", "dex", "con", "cha"), c.abilities)
+@dataclass
+class Shape:
+    """The widest each line gets across the whole party.
+
+    Held so that every card in one party is laid out the same way, whatever
+    the length of one character's name.
+    """
+    name: int
+    klass: int
+    abil: int
+
+
+def shape_of(party):
+    return Shape(
+        name=max(len(c.name) for c in party),
+        klass=max(len(f"{c.klass} · lvl {c.level}") for c in party),
+        abil=max(len(abilities_line(c)) for c in party),
     )
 
 
-def card_lines(c, w, budget, name_width=None, abil_width=None):
+def abilities_line(c):
+    """Six numbers in the order every Gold Box screen prints them.
+
+    No labels. A player who wants these knows the order, and six abbreviations
+    cost more of the card than the numbers do.
+    """
+    first = f"{c.abilities[0]}({c.str_pct})" if c.str_pct else str(c.abilities[0])
+    return "/".join([first] + [str(v) for v in c.abilities[1:]])
+
+
+def card_lines(c, w, budget, shape=None, abilities=False):
     """One card's lines, widest first, cut to `budget` lines.
 
     The order the lines leave in is the settled drop order: name last, then
@@ -96,10 +122,11 @@ def card_lines(c, w, budget, name_width=None, abil_width=None):
 
     # Name, with the class and level pushed to the right when they fit.
     #
-    # The test uses the longest name in the party, not this card's name, so
-    # that every card in a party has the same shape. One card laid out
-    # differently because its owner has a short name reads as a bug.
-    if w >= (name_width or len(c.name)) + 3 + len(klass_lvl):
+    # The test uses the longest name and the longest class in the party, not
+    # this card's own. Every card in a party gets the same shape; one card
+    # laid out differently because its owner has a short name reads as a bug.
+    want = shape.name + 3 + shape.klass if shape else len(c.name) + 3 + len(klass_lvl)
+    if w >= want:
         gap = w - len(c.name) - len(klass_lvl)
         lines.append((0, c.name + " " * gap + klass_lvl))
         klass_on_own_line = False
@@ -131,29 +158,39 @@ def card_lines(c, w, budget, name_width=None, abil_width=None):
     if ac_on_own_line:
         lines.append((4, ac))
 
+    # Ability scores are off unless the user asks for them. They barely change
+    # during play, and six numbers on every card makes the party look busy for
+    # information nobody is watching. There is no half-measure: a card either
+    # shows all six or none, because one number is not worth a line.
     abil = abilities_line(c)
-    short = f"str {c.abilities[0]} · thac0 {c.thac0}"
-    # Same reason as the name line: the whole party gets the long form or the
-    # whole party gets the short one. One card falling back because its owner
-    # rolled a single-digit strength looks like a bug.
-    if (abil_width or len(abil)) <= w:
+    if abilities and (shape.abil if shape else len(abil)) <= w:
         lines.append((5, abil))
-    elif len(short) <= w:
-        lines.append((5, short))
 
     keep = sorted(lines, key=lambda p: p[0])[:budget]
     kept = [t for _, t in sorted(keep, key=lambda p: lines.index(p))]
     return [t.ljust(w) for t in kept]
 
 
-# The width at which a card can say everything it has to say: the ability line
-# is the longest thing it ever holds. It comes from the content, not a screen.
-CARD_FULL = len("str 18 · int 9 · wis 11 · dex 16 · con 17 · cha 10") + 2
-# The most lines a card ever has.
+def card_wants():
+    """The width a card is happiest at.
+
+    Its widest line is the name with the class and level pushed to the right:
+    the longest name in the party, a gap, and the longest class and level. Add
+    the card's own two spaces of padding, and four more so that the text is
+    not jammed against the frame.
+
+    Every number here comes from the party and from the game's class names.
+    None of it comes from anybody's monitor. The four spaces of air are the
+    one judgement call, and widening or narrowing them is what moves a size
+    like 80x40 between one column of cards and two.
+    """
+    s = shape_of(PARTY)
+    return s.name + 3 + s.klass + 2 + 4
+# The most lines a card ever has: name, hit points, one condition, abilities.
 CARD_TALL = 5
 
 
-def layout(cols, rows):
+def layout(cols, rows, abilities=False):
     """How many cards across, and how wide and tall each one is.
 
     Six cards go across, or down, or into a grid in between. The rule picks
@@ -172,16 +209,17 @@ def layout(cols, rows):
         h = (body - (down + 1)) // down
         if w < CARD_MIN or h < 2:
             continue
-        h = min(h, max(len(card_lines(c, w, 99)) for c in PARTY))
-        miss = abs(w - CARD_FULL)
+        tall = max(len(card_lines(c, w, 99, shape_of(PARTY), abilities)) for c in PARTY)
+        h = min(h, tall)
+        miss = abs(w - card_wants())
         if best is None or miss < best[0]:
             best = (miss, across, down, w, h)
     return None if best is None else best[1:]
 
 
-def grid(cols, rows, header, footer, across=None):
+def grid(cols, rows, header, footer, across=None, abilities=False):
     """The party as a grid of cards."""
-    chosen = layout(cols, rows)
+    chosen = layout(cols, rows, abilities)
     if chosen is None:
         return None
     if across is None:
@@ -190,7 +228,7 @@ def grid(cols, rows, header, footer, across=None):
         down = len(PARTY) // across
         w = (cols - (across + 1)) // across - 2
         h = min(
-            max(len(card_lines(c, w, 99)) for c in PARTY),
+            max(len(card_lines(c, w, 99, shape_of(PARTY), abilities)) for c in PARTY),
             (rows - 2 - (down + 1)) // down,
         )
         if w < CARD_MIN or h < 2:
@@ -200,8 +238,7 @@ def grid(cols, rows, header, footer, across=None):
     # frame reaches the right edge exactly.
     spare = cols - (across + 1) - across * (w + 2)
     widths = [w + (1 if i < spare else 0) for i in range(across)]
-    longest = max(len(c.name) for c in PARTY)
-    widest = max(len(abilities_line(c)) for c in PARTY)
+    shape = shape_of(PARTY)
 
     def edge(left, mid, right):
         return left + mid.join("─" * (x + 2) for x in widths) + right
@@ -211,7 +248,9 @@ def grid(cols, rows, header, footer, across=None):
         if r:
             out.append(edge("├", "┼", "┤"))
         row_cards = PARTY[r * across : (r + 1) * across]
-        cells = [card_lines(c, x, h, longest, widest) for c, x in zip(row_cards, widths)]
+        cells = [
+            card_lines(c, x, h, shape, abilities) for c, x in zip(row_cards, widths)
+        ]
         for cell, x in zip(cells, widths):
             while len(cell) < h:
                 cell.append(" " * x)
@@ -251,7 +290,7 @@ def centre(lines, cols):
     return [pad + l for l in lines]
 
 
-def draw(cols, rows, across=None):
+def draw(cols, rows, across=None, abilities=False):
     """The whole screen at this size."""
     left = f"gbs — {GAME} · slot {SLOT}"
     right = "watch"
@@ -260,7 +299,7 @@ def draw(cols, rows, across=None):
     )
     footer = fit("1 Party · live · 6/6 · gold 1,240", cols)
 
-    plan = grid(cols, rows, header, footer, across)
+    plan = grid(cols, rows, header, footer, across, abilities)
     if plan is None:
         return None
     screen = [line[:cols].ljust(cols) for line in plan]
@@ -270,30 +309,34 @@ def draw(cols, rows, across=None):
 
 
 SIZES = [
-    # cols, rows, label, cards across (None lets the rule decide)
-    (40, 20, "hostile", None),
-    (50, 40, "sidecar-50", None),
-    (60, 40, "sidecar-60", None),
-    (80, 40, "sidecar-80", None),
-    (110, 50, "tall", None),
-    (160, 14, "wide", None),
-    (160, 42, "roomy", None),
-    # The rule's answer at 160x14 is not the six-across strip Jeff drew, so
-    # both are here to be compared.
-    (160, 14, "wide-forced-strip", 6),
+    # cols, rows, label, cards across (None lets the rule decide), abilities
+    (40, 20, "hostile", None, False),
+    (50, 40, "sidecar-50", None, False),
+    (60, 40, "sidecar-60", None, False),
+    (80, 40, "sidecar-80", None, False),
+    (110, 50, "tall", None, False),
+    (160, 14, "wide-3across", None, False),
+    (160, 42, "roomy", None, False),
+    # Six across is what Jeff drew, and he wants it kept as a choice rather
+    # than as the rule's answer. A key asks for it; the rule picks the rest.
+    (160, 14, "wide-6across", 6, False),
+    # The same layouts with the ability scores turned on, which is what the
+    # key does. Nothing else about the card moves.
+    (60, 40, "sidecar-60-abilities", None, True),
+    (110, 50, "tall-abilities", None, True),
 ]
 
 
 def main():
     import pathlib
     here = pathlib.Path(__file__).parent
-    for cols, rows, label, across in SIZES:
-        drawn = draw(cols, rows, across)
+    for cols, rows, label, across, abilities in SIZES:
+        drawn = draw(cols, rows, across, abilities)
         if drawn is None:
             print(f"{label}: nothing fits at {cols}x{rows}")
             continue
         (here / f"cards-{cols}x{rows}-{label}.txt").write_text("\n".join(drawn) + "\n")
-        chosen = across or layout(cols, rows)[0]
+        chosen = across or layout(cols, rows, abilities)[0]
         print(f"{label}: {cols}x{rows}, {chosen} across, {len(PARTY) // chosen} down")
 
 

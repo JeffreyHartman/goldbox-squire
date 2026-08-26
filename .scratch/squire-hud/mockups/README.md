@@ -15,23 +15,47 @@ That prints one number, and the number is the width.
 
 ## The card
 
-One card per character. The card is the unit, not a row in a table. A card
-holds up to five lines, and it drops them from the bottom as it shrinks:
+One card per character. The card is the unit, not a row in a table.
 
     THRENDER GRONE                     fighter · lvl 5     <- name, class, level
     hp 42/42 ████████████                         ac 2     <- hit points, bar, armour class
     okay                                                   <- what is on them, one line each
-    str 18 · int 9 · wis 11 · dex 16 · con 17 · cha 10     <- ability scores
 
-The class and level sit on the name line when both fit, and get their own line
+The class and level sit on the name line when they fit, and get their own line
 when they do not. Same for armour class and the hit point line. The bar is
 dropped rather than drawn four cells wide, because a bar that short never
 visibly moves.
 
-Two things are decided for the whole party rather than per card. Whether the
-class sits on the name line, and whether the ability line is the long form or
-`str 18 · thac0 16`. One card laid out differently because its owner has a
+The shape is decided once for the whole party, from the longest name and the
+longest class in it. One card laid out differently because its owner has a
 short name reads as a bug.
+
+## Ability scores are a key, not a rule
+
+They are off in every mockup except two. They barely change during play, and
+six numbers on every card makes the party look busy for information nobody is
+watching. There is no half measure: a card shows all six or none, because one
+score is not worth a line.
+
+When the key is pressed, one line appears above nothing and below the
+conditions:
+
+    18(72)/9/11/16/17/10
+
+No labels. The order is the one every Gold Box screen prints, and a player who
+wants these numbers knows it. `18(72)` is percentile strength, which has to
+survive the slashes, so it goes in brackets.
+
+    cards-60x40-sidecar-60-abilities.txt
+    cards-110x50-tall-abilities.txt
+
+Compare each against the file without `-abilities`. Nothing else about the card
+moves.
+
+This is a real toggle, not a width rule. That matters for 036: the layout plan
+answers "does this fit", and the toggle answers "did the user ask for it".
+Those are two different questions and the module has to take the toggle as an
+input rather than deciding it.
 
 ## The layout
 
@@ -40,6 +64,15 @@ is no strip mode and no sidecar mode. The rule picks the number across that
 gets each card closest to the width it wants, and the rows are a hard limit: a
 window too short for two rows of cards gets one row of six whatever the width
 says.
+
+What the card wants is worked out from the party: the longest name, a gap, the
+longest class and level, the card's own padding, and four spaces of air. Every
+part of that comes from the game data except the four spaces, and those four
+are the one number worth arguing about. Widening them moves 80x40 from two
+columns to one.
+
+A key can ask for a different number across, which is how 160x14 gets both
+answers.
 
 `sidecar` and `strip` are what the ends of that range look like. They are not
 states the code can be in.
@@ -51,8 +84,8 @@ states the code can be in.
 | `cards-60x40-sidecar-60.txt` | 60x40 | 1 across, 6 down |
 | `cards-80x40-sidecar-80.txt` | 80x40 | 2 across, 3 down |
 | `cards-110x50-tall.txt` | 110x50 | 2 across, 3 down |
-| `cards-160x14-wide.txt` | 160x14 | 3 across, 2 down |
-| `cards-160x14-wide-forced-strip.txt` | 160x14 | 6 across, forced, for comparison |
+| `cards-160x14-wide-3across.txt` | 160x14 | 3 across, 2 down, what the rule picks |
+| `cards-160x14-wide-6across.txt` | 160x14 | 6 across, what a key asks for |
 | `cards-160x42-roomy.txt` | 160x42 | 3 across, 2 down, and the wordmark |
 
 `python3 cards.py` redraws all of them.
@@ -96,24 +129,25 @@ option in case the cards turn out worse in a real terminal than they look here.
 `python3 mock.py` redraws those. `table-40x20-hostile-cut-names.txt` is the
 answer you already gave for the table: cut long names, keep the field.
 
-## What I still need you to decide
+## Settled
 
-**1. Are cards right.** Compare `cards-60x40-sidecar-60.txt` against
-`table-110x50-tall.txt`. If the cards are right, the table code goes.
+Cards, not tables. 60 is the sidecar width Squire starts at. Both wide answers
+are kept and a key chooses. Ability scores are off by default, shown as six
+slashed numbers when a key asks.
 
-**2. The sidecar width.** 50, 60, and 80 are drawn. 50 and 60 both give one
-column of six cards, and 60 is the first width where the full ability line
-fits. 80 flips to two columns of three, which may be a nice surprise or may be
-wrong. I would make 60 the size Squire remembers on a first run.
+## What is left to decide
 
-**3. Six across, or three across two down, at 160x14.** The rule picks three
-across because that gets each card near the width it wants. Six across is what
-you drew. Both files are there. I lean toward letting the rule decide, because
-the moment somebody has a 120 column window the six-across answer breaks and
-three-across still works.
+**1. The wordmark.** It appears only in `cards-160x42-roomy.txt`, in the room
+going spare. Keep it or cut it.
 
-**4. The wordmark, still.** It appears only in `cards-160x42-roomy.txt`, in the
-room going spare. Keep it or cut it.
+**2. What else the key toggles.** Ability scores are the first thing with an
+on and off. THAC0, experience, and encumbrance will want the same treatment
+when they land, and a key each does not scale. Worth one thought now, but not
+worth designing before there is a second one.
+
+**3. Whether the tables go.** `table-*.txt` are the first pass, kept only in
+case the cards read worse in a real terminal than they look here. Say the word
+and `mock.py` and its five files go.
 
 ## Not mocked up
 

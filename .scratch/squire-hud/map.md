@@ -68,10 +68,18 @@ Settled in the grilling session of 2026-08-25, before any code.
   so the list has one item; the effects read fills it later without changing
   the card.
 - **Drop order, last to go first**: name, current and maximum hit points,
-  status, class, level, armor class, ability scores. Status ranks high because
-  a silent `poisoned` is the thing you most want to notice without looking away
-  from the game, and it is cheap in columns as a symbol. Ability scores appear
-  only when roomy, because they barely change during play.
+  conditions, class, level, armor class. Conditions rank high because a silent
+  `poisoned` is the thing you most want to notice without looking away from the
+  game. Ability scores are not in this order at all: they are off by default
+  and a key turns them on, because they barely change during play and six
+  numbers on every card make the party look busy.
+- **A rule and a preference are different questions.** The layout plan answers
+  "does this fit". A key answers "did the user ask for it". The plan takes the
+  toggles as inputs and never decides one, or a preference ends up buried
+  inside a fitting rule where nobody can find it.
+- **The sidecar starts at 60 columns.** The width Squire opens at before it has
+  remembered anything. Wide enough for one column of six cards with the class
+  on the name line.
 - **No left menu, and no wordmark except when roomy.** Navigation is number
   keys with the panel name on the status line, which costs no rows and no
   columns and is the Gold Box idiom already. A HUD that reminds you what it is
