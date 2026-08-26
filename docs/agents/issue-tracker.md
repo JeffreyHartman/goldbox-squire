@@ -66,6 +66,8 @@ Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
 - `.scratch/squire-hud/` — the HUD map and tickets 033 upward. Ticket numbers
   continue the run rather than restarting, because a commit message citing
   `033` must name exactly one ticket across the whole repo.
+- `.scratch/toolchain/` — how the repo is built and checked, rather than what
+  it does. Standalone tickets, no map. See its `README.md`.
 
 ## Not the tracker
 

@@ -28,3 +28,22 @@ understands why it does not, rather than filing it as a bug.
       job and not Squire's
 - [ ] A worked KWin window rule and a worked Hyprland rule are given
 - [ ] The README does not promise placement, automatic or otherwise
+
+## Read this before starting
+
+Noted 2026-08-26.
+
+**"Squire sets a stable app-id" is not a call Squire makes.** The HUD is drawn
+inside a terminal, and the terminal is what reports an app id to the desktop.
+So the mechanism is 042's table: the `app_id` arguments of the entry for
+whichever terminal is spawned, filled with the `{id}` placeholder. Squire's job
+is to own the name and pass it. There is no Wayland call to go looking for.
+
+**Blocked on a decision, not on code.** This wants a README section and the
+repo has no README; ticket 012 owns writing one. Jeff said on 2026-08-26 that
+the README is handled separately and is not part of the HUD effort. So the
+app-id half can be worked without it, and the placement explanation waits for
+012.
+
+**Read 043's own note before either.** The two are one piece of work, and 043's
+stated process topology does not survive contact with ticket 011.

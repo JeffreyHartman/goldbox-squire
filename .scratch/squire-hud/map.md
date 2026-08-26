@@ -153,6 +153,15 @@ Settled in the grilling session of 2026-08-25, before any code.
   are reserved, and Enter steps the HUD aside so the one wizard asks the one
   question. See `issues/040-hud-keys.md`.
 
+- **The HUD cannot read the emulator from a sibling process.** 043 says the
+  launching terminal keeps the emulator handle while the HUD moves to a second
+  window. Those two cannot both hold: Yama permits a memory read of a
+  descendant, and a sibling is not one, so 043 as written works only at
+  `ptrace_scope = 0`, which ticket 011 refuses to ship. The fix is a choice
+  between inverting who launches DOSBox and passing an open `/proc/<pid>/mem`,
+  and it is not made yet. See the note at the bottom of
+  `issues/043-spawn-the-hud-window.md`.
+
 ## Not yet specified
 
 - **What the roomy sizes hold.** Map, journal and combat were tabs in the
