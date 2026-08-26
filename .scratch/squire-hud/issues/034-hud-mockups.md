@@ -1,7 +1,7 @@
 # 034 — Mockups: the party at four sizes
 
 Type: `wayfinder:prototype`
-Status: open
+Status: claimed
 Triage: `ready-for-human`
 Blocked by: 033
 
@@ -30,10 +30,29 @@ building it before 036 rather than after.
 
 ## Acceptance criteria
 
-- [ ] Four mockups, each a fixed character grid at its stated size
-- [ ] Party data only, with plausible six-character parties including a wounded
+- [x] Four mockups, each a fixed character grid at its stated size
+- [x] Party data only, with plausible six-character parties including a wounded
       one and one with a status
-- [ ] Each mockup shows which fields survived at that size, and the roomy one
+- [x] Each mockup shows which fields survived at that size, and the roomy one
       shows the wordmark
 - [ ] Jeff has looked at them and either confirmed the drop order or changed it
 - [ ] Whatever he decides is recorded on this ticket, because 036 reads it
+
+## Built, and waiting on Jeff
+
+`.scratch/squire-hud/mockups/`. Five grids, not four: the hostile size is drawn
+twice, because at 40 columns you can have whole names or one more field and not
+both, and that is a choice rather than a rule.
+
+    cat .scratch/squire-hud/mockups/README.md
+
+`mock.py` draws all five. Changing the drop order is one edit to `COLUMNS` and a
+rerun.
+
+Six questions are written up in the README: the drop order itself, whole names
+against one more field, the one-glyph status, the roomy threshold, centring
+against stretching, and whether a character may take two rows when rows are
+plentiful and columns are not. The fourth is the one 036 turns into assertions.
+
+**The answers go here.** 036 reads this heading, not the map, and it stays
+`ready-for-human` until they are written down.
