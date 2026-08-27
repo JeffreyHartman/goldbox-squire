@@ -20,9 +20,18 @@ socket. Moving the highlight is not the host's business.
 
 ## Acceptance criteria
 
-- [ ] q, Escape and Ctrl-C in the view end the run
-- [ ] Enter in the view asks the slot question in the view's window, and the
+- [x] q, Escape and Ctrl-C in the view end the run
+- [x] Enter in the view asks the slot question in the view's window, and the
       host retargets to the answer
-- [ ] The highlight, the ability toggle and the cards-across key stay in the
+- [x] The highlight, the ability toggle and the cards-across key stay in the
       view
-- [ ] A view that dies mid-repick does not wedge the host
+- [x] A view that dies mid-repick does not wedge the host
+
+## Note
+
+The last criterion turned up a real fault rather than a check. A view stops
+reading the socket for as long as the slot question is on screen, and the host
+wrote to it directly, so a long question could have stalled the run and a
+partial write could have cut a message in half. Each view now has an unsent
+buffer that the host pushes at every pause and never blocks on. A view that
+never comes back is let go after a megabyte, which is minutes of party lines.

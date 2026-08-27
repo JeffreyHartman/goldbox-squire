@@ -9,7 +9,8 @@
 //! [`crate::hud`]'s business, and it is the same HUD whether it was started
 //! here or by `--plain`'s absence in a single-window run.
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
+use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::Duration;
@@ -20,7 +21,7 @@ use squire_core::session::Party;
 use crate::hud::Hud;
 use crate::layout::{Caption, Size};
 use crate::terminals::ViewKind;
-use crate::watch::Screen;
+use crate::watch::{Interrupt, Keys, Screen};
 use crate::wire::{self, Hello};
 
 /// One message from the host.
@@ -84,9 +85,9 @@ pub fn run(kind: ViewKind, socket: &Path, remembered: Option<Size>) -> Result<Si
     );
 
     let hello = first_hello(&mut lines)?;
-    // Named here rather than used, because a view that cannot name the game
-    // is a view drawing a party it may be decoding with the wrong table.
-    games::find(&hello.game_id).ok_or_else(|| {
+    // The game is what the slot question is asked about, so a view that
+    // cannot name it is a view whose Enter key does nothing.
+    let game = games::find(&hello.game_id).ok_or_else(|| {
         format!(
             "the host is watching `{}`, which this build of gbs does not know",
             hello.game_id
@@ -103,42 +104,64 @@ pub fn run(kind: ViewKind, socket: &Path, remembered: Option<Size>) -> Result<Si
         remembered,
     )?;
     let mut screen = interface.screen();
+    let mut keys = interface.keys(&game, hello.save_dir.as_deref());
 
-    // Blocking reads from here on. A view has nothing to do between messages
-    // except redraw on a resize, and the host sends a party every poll, so
-    // the longest this ever waits is one poll interval.
+    // A read only happens once the socket says it has something, so this
+    // timeout is a backstop against a half-written line rather than the
+    // normal wait.
     stream
         .set_read_timeout(Some(Duration::from_millis(100)))
         .map_err(|e| format!("listening to the host: {e}"))?;
 
-    let outcome = draw_until_the_host_goes(&mut lines, &interface, &mut screen);
+    let outcome = draw_and_listen(
+        &mut lines,
+        &mut stream
+            .try_clone()
+            .map_err(|e| format!("talking to the host: {e}"))?,
+        &interface,
+        &mut screen,
+        &mut keys,
+    );
     let size = interface.size();
     drop(interface);
     outcome.map(|()| size)
 }
 
-/// Reads messages and draws them, until the host closes the socket.
+/// Draws what the host sends, and sends back what the user does.
 ///
 /// The host going is how a run ends, so it is not an error. The user quit the
 /// game, or quit gbs, and either way the window has nothing left to show.
-fn draw_until_the_host_goes(
+fn draw_and_listen(
     lines: &mut BufReader<UnixStream>,
+    up: &mut UnixStream,
     interface: &Hud,
     screen: &mut dyn Screen,
+    keys: &mut dyn Keys,
 ) -> Result<(), String> {
     let mut line = String::new();
     loop {
+        let (typed, sent) = wait_for_either(lines, Duration::from_millis(250));
+
+        if typed {
+            // Zero, because the waiting was done above. This reads the event
+            // that is already there, and handles a resize as well as a key.
+            match keys.wait(Duration::ZERO)? {
+                Interrupt::Quit => return tell(up, &quit_message()),
+                Interrupt::Repick { slot, names } => tell(up, &repick_message(slot, &names))?,
+                // A key that only changes what is drawn. The host has no
+                // business knowing the highlight moved.
+                Interrupt::None => {}
+            }
+        }
+
+        if !sent {
+            continue;
+        }
         line.clear();
         match lines.read_line(&mut line) {
             Ok(0) => return Ok(()),
             Ok(_) => {}
-            Err(e) if would_block(&e) => {
-                // Nothing arrived this slice. Spend it noticing a resize, so
-                // that dragging the window edge reflows rather than looking
-                // like a hang until the next poll.
-                interface.pump_resizes()?;
-                continue;
-            }
+            Err(e) if would_block(&e) => continue,
             Err(e) => return Err(format!("listening to the host: {e}")),
         }
         match decode(&line) {
@@ -152,6 +175,56 @@ fn draw_until_the_host_goes(
         }
         interface.pump_resizes()?;
     }
+}
+
+/// Waits until the user types or the host speaks, whichever comes first.
+///
+/// Both at once, because a view that waited on one would answer the other
+/// late: keys would lag a poll behind, or the party would.
+fn wait_for_either(lines: &BufReader<UnixStream>, slice: Duration) -> (bool, bool) {
+    // Bytes already buffered will never make the socket readable again, and a
+    // whole message can be sitting in there. Polling first would stall the
+    // window until the host next said something.
+    if !lines.buffer().is_empty() {
+        return (false, true);
+    }
+    let stdin = std::io::stdin();
+    let mut fds = [
+        nix::poll::PollFd::new(stdin.as_fd(), nix::poll::PollFlags::POLLIN),
+        nix::poll::PollFd::new(lines.get_ref().as_fd(), nix::poll::PollFlags::POLLIN),
+    ];
+    let ms = u16::try_from(slice.as_millis()).unwrap_or(u16::MAX);
+    match nix::poll::poll(&mut fds, nix::poll::PollTimeout::from(ms)) {
+        Ok(0) => (false, false),
+        Ok(_) => {
+            let ready = |fd: &nix::poll::PollFd| fd.revents().is_some_and(|r| !r.is_empty());
+            (ready(&fds[0]), ready(&fds[1]))
+        }
+        // A signal is not worth closing a window over. Try both.
+        Err(_) => (true, true),
+    }
+}
+
+/// The user asked to stop. Ending the run is the host's job: it owns the
+/// emulator handle, and 011 forbids a window taking the game down with it.
+pub fn quit_message() -> serde_json::Value {
+    serde_json::json!({ "kind": "quit" })
+}
+
+/// The user picked a different save slot, and the view already asked the
+/// question. What crosses the socket is the answer, so there is still one
+/// wizard rather than two that can disagree.
+pub fn repick_message(slot: char, names: &[String]) -> serde_json::Value {
+    serde_json::json!({ "kind": "repick", "slot": slot.to_string(), "names": names })
+}
+
+/// Sends one message up to the host.
+fn tell(stream: &mut UnixStream, message: &serde_json::Value) -> Result<(), String> {
+    stream
+        .write_all(message.to_string().as_bytes())
+        .and_then(|()| stream.write_all(b"\n"))
+        .and_then(|()| stream.flush())
+        .map_err(|e| format!("telling the host: {e}"))
 }
 
 /// The host's first word, which says which run this window belongs to.

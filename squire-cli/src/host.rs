@@ -31,12 +31,51 @@ use crate::wire;
 /// because building one is a thing the host's caller does.
 pub use crate::wire::Hello;
 
+/// How much unsent output one view may fall behind by before it is let go.
+///
+/// A view stops reading for a moment whenever it steps aside for the slot
+/// question, and it catches up the instant it comes back, so falling behind
+/// is normal. A view that never comes back is a window that has stopped being
+/// a window, and holding its output forever would grow this process without
+/// end. A party line is a couple of kilobytes, so this is minutes of them.
+const MOST_UNSENT: usize = 1 << 20;
+
 /// One connected view.
 struct Client {
     stream: UnixStream,
     /// Bytes read but not yet a whole line. A socket hands over whatever
     /// arrived, which is not always a message.
     partial: Vec<u8>,
+    /// Bytes written but not yet taken. The host never blocks on a view: a
+    /// window that has stopped reading must not be able to stop the run, and
+    /// a half-written message would be worse than a late one.
+    unsent: Vec<u8>,
+}
+
+impl Client {
+    /// Queues one line, and pushes out as much as the socket will take.
+    ///
+    /// Returns whether the view is still worth keeping.
+    fn send(&mut self, line: &str) -> bool {
+        self.unsent.extend_from_slice(line.as_bytes());
+        self.unsent.push(b'\n');
+        self.flush()
+    }
+
+    fn flush(&mut self) -> bool {
+        while !self.unsent.is_empty() {
+            match self.stream.write(&self.unsent) {
+                Ok(0) => return false,
+                Ok(n) => {
+                    self.unsent.drain(..n);
+                }
+                Err(e) if e.kind() == ErrorKind::WouldBlock => break,
+                Err(e) if e.kind() == ErrorKind::Interrupted => continue,
+                Err(_) => return false,
+            }
+        }
+        self.unsent.len() <= MOST_UNSENT
+    }
 }
 
 struct Inner {
@@ -60,14 +99,15 @@ impl Inner {
     /// A view closing is normal and is not worth a word: views are throwaway,
     /// and the run is the host.
     fn broadcast(&mut self, line: &str) {
-        self.clients.retain_mut(|client| {
-            client
-                .stream
-                .write_all(line.as_bytes())
-                .and_then(|()| client.stream.write_all(b"\n"))
-                .and_then(|()| client.stream.flush())
-                .is_ok()
-        });
+        self.clients.retain_mut(|client| client.send(line));
+    }
+
+    /// Pushes out whatever a view was too busy to take last time.
+    ///
+    /// Called every pause, so a view that stepped aside for the slot question
+    /// catches up the moment it comes back rather than at the next poll.
+    fn flush_all(&mut self) {
+        self.clients.retain_mut(Client::flush);
     }
 
     /// Takes every view waiting to connect, and catches each one up.
@@ -81,18 +121,12 @@ impl Inner {
                     let mut client = Client {
                         stream,
                         partial: Vec::new(),
+                        unsent: Vec::new(),
                     };
                     let mut lines = vec![self.hello.clone()];
                     lines.extend(self.last_party.clone());
                     lines.extend(self.last_notice.clone());
-                    let welcomed = lines.iter().all(|line| {
-                        client
-                            .stream
-                            .write_all(line.as_bytes())
-                            .and_then(|()| client.stream.write_all(b"\n"))
-                            .and_then(|()| client.stream.flush())
-                            .is_ok()
-                    });
+                    let welcomed = lines.iter().all(|line| client.send(line));
                     if welcomed {
                         self.clients.push(client);
                     }
@@ -263,6 +297,7 @@ impl Keys for HostKeys {
         loop {
             let left = deadline.saturating_duration_since(Instant::now());
             let mut inner = self.inner.borrow_mut();
+            inner.flush_all();
 
             // The fds are borrowed from `inner`, so they are gathered, polled
             // and dropped before anything is read: the reading needs `inner`

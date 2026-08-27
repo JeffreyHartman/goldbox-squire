@@ -181,3 +181,60 @@ fn a_socket_that_is_not_there_says_so_and_names_the_path() {
 
     assert!(err.contains("999999.sock"), "got: {err}");
 }
+
+// --- what a view sends back ------------------------------------------------
+
+/// Sends one of the view's own messages to a real host, and returns what the
+/// watch loop is handed for it.
+fn what_the_host_hears(message: &serde_json::Value) -> squire_cli::watch::Interrupt {
+    use squire_cli::watch::Keys;
+    use std::io::Write;
+
+    let dir = std::env::temp_dir().join(format!("gbs-view-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("making the test directory");
+    let socket = dir.join(format!(
+        "{}.sock",
+        message["kind"].as_str().expect("a kind")
+    ));
+
+    let host = squire_cli::host::Host::start(
+        &socket,
+        Hello {
+            game_id: "pool-of-radiance".into(),
+            game_name: "Pool of Radiance".into(),
+            slot: Some('A'),
+            save_dir: None,
+        },
+        Box::new(Vec::new()),
+    )
+    .expect("the host starts");
+
+    let mut up = view::connect(&socket).expect("connecting");
+    up.write_all(message.to_string().as_bytes()).unwrap();
+    up.write_all(b"\n").unwrap();
+    up.flush().unwrap();
+
+    host.keys()
+        .wait(std::time::Duration::from_millis(500))
+        .expect("the pause")
+}
+
+#[test]
+fn quitting_in_the_view_ends_the_run() {
+    // The view never stops the emulator itself. It says so, and the host,
+    // which owns the handle, is what ends the run.
+    assert_eq!(
+        what_the_host_hears(&view::quit_message()),
+        squire_cli::watch::Interrupt::Quit
+    );
+}
+
+#[test]
+fn a_repick_carries_the_answer_and_not_the_question() {
+    let names = vec!["Ilyana".to_string(), "Brom".to_string()];
+
+    assert_eq!(
+        what_the_host_hears(&view::repick_message('C', &names)),
+        squire_cli::watch::Interrupt::Repick { slot: 'C', names }
+    );
+}

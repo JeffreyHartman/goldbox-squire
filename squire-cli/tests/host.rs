@@ -366,3 +366,44 @@ fn a_party_that_is_not_one_says_what_is_wrong_rather_than_panicking() {
 
     assert!(err.contains("sideways"), "got: {err}");
 }
+
+#[test]
+fn a_view_that_has_stopped_reading_cannot_stall_the_run() {
+    // A view stops reading whenever it steps aside for the slot question, and
+    // the game is still being played while it does. A host that blocked on
+    // one window would be a tool that freezes the party display because
+    // somebody opened a menu in another window.
+    let path = scratch("deaf");
+    let mut host = started(&path);
+    let _view = connect(&mut host, &path);
+
+    let started_at = std::time::Instant::now();
+    for _ in 0..2000 {
+        host.screen().party(&Party {
+            state: PartyState::Live,
+            characters: vec![character("Ilyana")],
+        });
+    }
+
+    assert!(
+        started_at.elapsed() < Duration::from_secs(5),
+        "2000 polls took {:?} with nobody reading",
+        started_at.elapsed()
+    );
+}
+
+#[test]
+fn a_view_that_falls_behind_and_comes_back_gets_what_it_missed() {
+    // What the slot question costs is a pause, not a gap in the numbers.
+    let path = scratch("behind");
+    let mut host = started(&path);
+    let mut view = connect(&mut host, &path);
+
+    host.screen().notice("first");
+    host.screen().notice("second");
+
+    let lines: Vec<String> = (0..3).map(|_| line(&mut view)).collect();
+    assert!(lines[0].contains("hello"), "{lines:?}");
+    assert!(lines[1].contains("first"), "{lines:?}");
+    assert!(lines[2].contains("second"), "{lines:?}");
+}
