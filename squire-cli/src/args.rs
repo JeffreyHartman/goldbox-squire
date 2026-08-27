@@ -8,6 +8,8 @@
 
 use std::fmt;
 
+use crate::terminals::ViewKind;
+
 /// Everything the command line said.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Args {
@@ -33,6 +35,18 @@ pub struct Args {
     pub help: bool,
     /// Milliseconds between redraws once a party was found.
     pub interval_ms: u64,
+    /// Be a view of the run listening on `socket`, rather than a run.
+    ///
+    /// This is how gbs spawns its own windows. A person may run it by hand
+    /// against a live socket, which is the only way to open a second window
+    /// on a sitting until there is a key for it.
+    pub view: Option<ViewKind>,
+    /// The host's socket, for a view. Required by `--view` and useless
+    /// without it.
+    pub socket: Option<String>,
+    /// The terminal to open the window in. Default: `TERMINAL`, then the
+    /// first terminal Squire knows that is on PATH.
+    pub terminal: Option<String>,
 }
 
 /// A bad command line.
@@ -79,6 +93,14 @@ OPTIONS:
                        it, rather than opening the HUD. For pipes, scripts
                        and anything reading gbs as text. Implied by --json.
     --json             Print JSON rather than a table.
+    --terminal <CMD>   The terminal to open the HUD's window in. Default: the
+                       TERMINAL environment variable, then the first terminal
+                       gbs knows that is on PATH. A terminal gbs does not know
+                       is still opened, at whatever size it chooses.
+    --view <KIND>      Draw a view of the run listening on --socket, rather
+                       than starting one. KIND is hud. This is how gbs opens
+                       its own windows; run it by hand to open another.
+    --socket <PATH>    The host's socket, for --view.
     --pid <PID>        Read an emulator this tool did not start. This works
                        only where the system already permits it, and gbs will
                        say so if it does not. Letting gbs start the game is
@@ -133,6 +155,18 @@ impl Args {
                         .parse()
                         .map_err(|_| ArgError(format!("--interval needs a number, got `{raw}`")))?;
                 }
+                "--terminal" => args.terminal = Some(value("--terminal")?),
+                "--socket" => args.socket = Some(value("--socket")?),
+                "--view" => {
+                    let raw = value("--view")?;
+                    let kinds: Vec<&str> = ViewKind::ALL.iter().map(|k| k.as_str()).collect();
+                    args.view = Some(ViewKind::parse(&raw).ok_or_else(|| {
+                        ArgError(format!(
+                            "--view does not have a `{raw}`. There is {}.",
+                            kinds.join(", ")
+                        ))
+                    })?);
+                }
                 "--json" => args.json = true,
                 "--plain" => args.plain = true,
                 "-h" | "--help" => args.help = true,
@@ -142,6 +176,14 @@ impl Args {
                     )))
                 }
             }
+        }
+
+        // Neither half is any use alone: a view with no socket has nothing to
+        // draw, and a socket with no view is a path nobody reads.
+        match (args.view, &args.socket) {
+            (Some(_), None) => return Err(ArgError("--view needs --socket to draw from".into())),
+            (None, Some(_)) => return Err(ArgError("--socket does nothing without --view".into())),
+            _ => {}
         }
 
         Ok(args)

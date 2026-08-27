@@ -9,10 +9,55 @@
 //! types happen to be, and `--json` prints the same shape: one party format
 //! in the program, not two that can drift.
 
+use std::path::PathBuf;
+
 use serde_json::{json, Value};
 
 use squire_core::record::Character;
 use squire_core::session::{Party, PartyState};
+
+/// What a view is told the moment it connects.
+///
+/// A view has to caption itself and to ask the slot question, and neither can
+/// wait for the next poll: a game sitting at the title screen polls every two
+/// seconds and may not have found a party at all yet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hello {
+    pub game_id: String,
+    pub game_name: String,
+    /// The slot being watched, when one has been picked. A fresh install has
+    /// none until the user saves in game.
+    pub slot: Option<char>,
+    /// The install's save folder, which is where a repick starts looking.
+    /// `None` on the `--pid` path, which never started a game.
+    pub save_dir: Option<PathBuf>,
+}
+
+impl Hello {
+    /// The hello as it goes down the socket.
+    pub fn line(&self) -> String {
+        json!({
+            "kind": "hello",
+            "game_id": self.game_id,
+            "game_name": self.game_name,
+            "slot": self.slot.map(|c| c.to_string()),
+            "save_dir": self.save_dir.as_ref().map(|p| p.display().to_string()),
+        })
+        .to_string()
+    }
+    /// The hello back out of a JSON value.
+    pub fn from_value(value: &Value) -> Result<Hello, String> {
+        Ok(Hello {
+            game_id: value["game_id"]
+                .as_str()
+                .ok_or_else(|| "the hello names no game".to_string())?
+                .to_string(),
+            game_name: value["game_name"].as_str().unwrap_or_default().to_string(),
+            slot: value["slot"].as_str().and_then(|s| s.chars().next()),
+            save_dir: value["save_dir"].as_str().map(PathBuf::from),
+        })
+    }
+}
 
 /// The party as a JSON value.
 pub fn party_value(party: &Party) -> Value {

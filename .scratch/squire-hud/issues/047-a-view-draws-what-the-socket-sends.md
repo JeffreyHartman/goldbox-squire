@@ -19,10 +19,10 @@ Keys are not wired back in this ticket. That is 049.
 
 ## Acceptance criteria
 
-- [ ] `gbs` run as a view against a live host's socket draws the party, and
+- [x] `gbs` run as a view against a live host's socket draws the party, and
       keeps drawing as the numbers change
-- [ ] The caption names the game and the slot the host is watching
-- [ ] The watch's notices reach the view
-- [ ] Resizing the view's window reflows it
-- [ ] The host quitting ends the view without an error message
-- [ ] A socket path that is not there says so plainly and exits non-zero
+- [x] The caption names the game and the slot the host is watching
+- [x] The watch's notices reach the view
+- [x] Resizing the view's window reflows it
+- [x] The host quitting ends the view without an error message
+- [x] A socket path that is not there says so plainly and exits non-zero

@@ -27,35 +27,9 @@ use squire_core::session::Party;
 use crate::watch::{Interrupt, Keys, Screen};
 use crate::wire;
 
-/// What a view is told the moment it connects.
-///
-/// A view has to caption itself and to ask the slot question, and neither can
-/// wait for the next poll: a game sitting at the title screen polls every two
-/// seconds and may not have found a party at all yet.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Hello {
-    pub game_id: String,
-    pub game_name: String,
-    /// The slot being watched, when one has been picked. A fresh install has
-    /// none until the user saves in game.
-    pub slot: Option<char>,
-    /// The install's save folder, which is where a repick starts looking.
-    /// `None` on the `--pid` path, which never started a game.
-    pub save_dir: Option<PathBuf>,
-}
-
-impl Hello {
-    fn line(&self) -> String {
-        json!({
-            "kind": "hello",
-            "game_id": self.game_id,
-            "game_name": self.game_name,
-            "slot": self.slot.map(|c| c.to_string()),
-            "save_dir": self.save_dir.as_ref().map(|p| p.display().to_string()),
-        })
-        .to_string()
-    }
-}
+/// The hello is a message, so it is defined on the wire. It is named here too,
+/// because building one is a thing the host's caller does.
+pub use crate::wire::Hello;
 
 /// One connected view.
 struct Client {

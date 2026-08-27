@@ -13,6 +13,7 @@ use squire_cli::keys;
 use squire_cli::layout::{Caption, Size};
 use squire_cli::manual;
 use squire_cli::output;
+use squire_cli::view;
 use squire_cli::watch::{self, Watch};
 use squire_cli::wizard;
 use squire_core::launch::Emulator;
@@ -39,6 +40,23 @@ fn run() -> Result<(), String> {
     }
 
     let mut config = Config::load();
+
+    // A view is a window on a run that is already going, so it starts no game
+    // and asks no questions. This is how gbs opens its own windows, and
+    // running it by hand is how a second window is opened on a sitting.
+    if let Some(kind) = args.view {
+        let socket = args
+            .socket
+            .clone()
+            .expect("the parser pairs --view with --socket");
+        let remembered = config.hud.map(|h| Size {
+            cols: h.columns,
+            rows: h.rows,
+        });
+        let size = view::run(kind, Path::new(&socket), remembered)?;
+        remember_size(&mut config, size);
+        return Ok(());
+    }
 
     // Attaching to an emulator this tool did not start is the unusual path.
     // It needs a relaxed kernel.yama.ptrace_scope, so it is never the
