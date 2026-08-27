@@ -21,8 +21,8 @@ invent a name, which was 041's real worry.
 
 ## Acceptance criteria
 
-- [ ] Each view kind has one owned name, and the HUD's is `goldbox-squire-hud`
-- [ ] `Terminal::command_line` fills `{id}` from the view kind it is given
-- [ ] No caller can pass a name that is not on the list
-- [ ] `terminals.toml` says what `{id}` is filled with now
-- [ ] `CONTEXT.md`'s App id entry matches
+- [x] Each view kind has one owned name, and the HUD's is `goldbox-squire-hud`
+- [x] `Terminal::command_line` fills `{id}` from the view kind it is given
+- [x] No caller can pass a name that is not on the list
+- [x] `terminals.toml` says what `{id}` is filled with now
+- [x] `CONTEXT.md`'s App id entry matches

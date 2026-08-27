@@ -12,6 +12,7 @@ pub mod layout;
 pub mod manual;
 pub mod output;
 pub mod picker;
+pub mod spawn;
 pub mod terminals;
 pub mod view;
 pub mod watch;

@@ -308,6 +308,15 @@ impl Keys for HostKeys {
                 let (interrupt, closed) = inner.read_client(index);
                 if closed {
                     inner.clients.remove(index);
+                    // Worth a line in the log. A window that closed on its own
+                    // is the one thing a user cannot see from the game, and
+                    // the run carrying on without it is deliberate.
+                    let left = inner.clients.len();
+                    let _ = writeln!(
+                        inner.log,
+                        "gbs: a window closed. {left} still open, and the run continues."
+                    );
+                    let _ = inner.log.flush();
                 }
                 if found.is_none() {
                     found = interrupt;

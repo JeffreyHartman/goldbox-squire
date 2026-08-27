@@ -8,11 +8,13 @@ use squire_cli::args::{Args, USAGE};
 use squire_cli::attach;
 use squire_cli::conf;
 use squire_cli::config::{Config, WindowSize};
-use squire_cli::hud;
+use squire_cli::host;
 use squire_cli::keys;
-use squire_cli::layout::{Caption, Size};
+use squire_cli::layout::Size;
 use squire_cli::manual;
 use squire_cli::output;
+use squire_cli::spawn;
+use squire_cli::terminals::ViewKind;
 use squire_cli::view;
 use squire_cli::watch::{self, Watch};
 use squire_cli::wizard;
@@ -175,15 +177,28 @@ fn run() -> Result<(), String> {
     for dos_command in conf::autoexec(&install, &game)? {
         emulator = emulator.command(dos_command);
     }
-    let log = log_path();
-    emulator = emulator.log_to(&log);
+    // Where the emulator's own output goes. On the windowed path this
+    // terminal is the log, so DOSBox writes straight into it. `--plain` is
+    // printing a table here instead, and two writers on one terminal is a
+    // mess, so there it goes to a file as it always did.
+    let plain = is_plain(&args);
+    let log = plain.then(log_path);
+    if let Some(path) = &log {
+        emulator = emulator.log_to(path);
+    }
 
     let mut running = emulator.start().map_err(|e| e.to_string())?;
-    eprintln!(
-        "gbs: started {command} as process {}. Its messages go to {}",
-        running.pid(),
-        log.display()
-    );
+    match &log {
+        Some(path) => eprintln!(
+            "gbs: started {command} as process {}. Its messages go to {}",
+            running.pid(),
+            path.display()
+        ),
+        None => eprintln!(
+            "gbs: started {command} as process {}. This window is now the log.",
+            running.pid()
+        ),
+    }
 
     let mut session = Session::new(running.reader(), table, names.clone());
     // The repick folder is the install's own save folder: for a designs game
@@ -231,9 +246,9 @@ fn run_watch<R: squire_core::mem::Reader>(
     let running = running.map(|r| r as &mut dyn watch::Alive);
 
     // JSON is for a program, and a program is never watching a screen. A
-    // stream that is not a terminal cannot hold a HUD at all, and saying so
-    // beats failing to take over something that is not there.
-    let plain = args.plain || args.json || !is_terminal();
+    // stream that is not a terminal has nobody to open a window for, and
+    // saying so beats opening one nobody asked for.
+    let plain = is_plain(args);
     if plain && !(args.plain || args.json) {
         eprintln!("gbs: standard output is not a terminal, so the table is printed instead.");
     }
@@ -252,20 +267,29 @@ fn run_watch<R: squire_core::mem::Reader>(
         );
     }
 
-    let caption = Caption {
-        game: game.name.clone(),
+    // The windowed path. This process is the host: it keeps the emulator, it
+    // is the only process permitted to read it, and it hands the party out
+    // over a socket. The HUD is a view in a window of its own (ADR 0005).
+    let socket = host::default_socket_path();
+    let hello = host::Hello {
+        game_id: game.id.clone(),
+        game_name: game.name.clone(),
         slot,
-        panel: "party".to_string(),
-        note: None,
+        save_dir: save_dir.map(Path::to_path_buf),
     };
-    let remembered = config.hud.map(|h| Size {
-        cols: h.columns,
-        rows: h.rows,
-    });
-    let interface = hud::Hud::start(caption, remembered)?;
-    let mut screen = interface.screen();
-    let mut keys = interface.keys(game, save_dir);
-    let outcome = watch::watch(
+    let served = host::Host::start(&socket, hello, Box::new(std::io::stderr()))?;
+
+    // The window is opened after the socket exists, so that the view never
+    // races the host and finds nothing to connect to.
+    let window = open_the_hud(args, config, &socket);
+    match window {
+        Ok(_child) => eprintln!("gbs: the HUD is in its own window. This one is the log."),
+        Err(problem) => eprintln!("gbs: {problem}"),
+    }
+
+    let mut screen = served.screen();
+    let mut keys = served.keys();
+    watch::watch(
         session,
         &timing,
         &mut screen,
@@ -273,18 +297,57 @@ fn run_watch<R: squire_core::mem::Reader>(
         running,
         slot,
         names,
-    );
-
-    // Recorded on the way out, whether the run ended well or badly: the user
-    // resized the window either way, and losing that over an error would mean
-    // resizing it again next launch.
-    // Read before the terminal goes back, written after: a warning printed
-    // onto the alternate screen is a warning nobody can read.
-    let size = interface.size();
-    drop(interface);
-    remember_size(config, size);
-    outcome
+    )
+    // The socket goes with `served`, and every view reading it sees the end of
+    // it and closes. The size the user left the window at is the view's to
+    // remember, because the view is the process that knows it.
 }
+
+/// Opens the HUD's window, at the size the last run was left at.
+fn open_the_hud(
+    args: &Args,
+    config: &Config,
+    socket: &Path,
+) -> Result<std::process::Child, String> {
+    let (list, problems) = squire_cli::terminals::load();
+    for problem in problems {
+        eprintln!("gbs: {problem}");
+    }
+    let program = spawn::choose(
+        &list,
+        args.terminal.as_deref(),
+        std::env::var("TERMINAL").ok().as_deref(),
+        &spawn::on_path,
+    )
+    .ok_or_else(|| {
+        format!(
+            "no terminal found to open the HUD in. gbs looked on PATH for {}.              Name yours with --terminal <CMD>, or run gbs --plain.",
+            list.iter()
+                .map(|t| t.name.as_str())
+                .collect::<Vec<&str>>()
+                .join(", ")
+        )
+    })?;
+
+    let gbs = std::env::current_exe().map_err(|e| format!("finding gbs itself: {e}"))?;
+    let command = spawn::view_command(&gbs, ViewKind::Hud, socket);
+    let size = config.hud.map_or(DEFAULT_WINDOW, |h| Size {
+        cols: h.columns,
+        rows: h.rows,
+    });
+    let (argv, problem) = spawn::plan(&list, &program, ViewKind::Hud, size, &command);
+    if let Some(problem) = problem {
+        eprintln!("gbs: {problem}");
+    }
+    spawn::open(&argv)
+}
+
+/// The window a first run gets, before there is a remembered size.
+///
+/// Eighty by twenty-four is what a terminal opens at when nobody says
+/// otherwise, so it is the size the user is least surprised by. The next run
+/// uses whatever they dragged it to.
+const DEFAULT_WINDOW: Size = Size { cols: 80, rows: 24 };
 
 /// What one watch is pointed at.
 ///
@@ -319,6 +382,11 @@ fn remember_size(config: &mut Config, size: Size) {
     if let Err(e) = config.save() {
         eprintln!("gbs: warning: could not remember the window size: {e}");
     }
+}
+
+/// Whether this run prints a table here rather than opening a window.
+fn is_plain(args: &Args) -> bool {
+    args.plain || args.json || !is_terminal()
 }
 
 /// Whether standard output is a terminal, asked of the kernel rather than of

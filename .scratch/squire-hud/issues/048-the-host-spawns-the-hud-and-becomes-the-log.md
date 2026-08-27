@@ -22,12 +22,25 @@ because two routes through the same feature is how one of them rots.
 
 ## Acceptance criteria
 
-- [ ] `gbs` opens the HUD in a new window at the remembered size, with the
+- [x] `gbs` opens the HUD in a new window at the remembered size, with the
       app id from 046
-- [ ] The host's own window shows rescans, anchor losses and emulator output
-- [ ] A user entry from 042 is honoured over the compiled-in default
-- [ ] An unrecognised terminal is still launched, with one message saying the
+- [x] The host's own window shows rescans, anchor losses and emulator output
+- [x] A user entry from 042 is honoured over the compiled-in default
+- [x] An unrecognised terminal is still launched, with one message saying the
       size could not be set
-- [ ] Closing the HUD window does not end the run
-- [ ] Quitting the host closes the HUD window and leaves the emulator running
-- [ ] `--plain` still runs in place and spawns nothing
+- [x] Closing the HUD window does not end the run
+- [x] Quitting the host closes the HUD window and leaves the emulator running
+- [x] `--plain` still runs in place and spawns nothing
+
+## Note
+
+`--plain` creating no socket came from 043, which is where a host is first
+built. It is satisfied here: `Host::start` is called only on the windowed
+path.
+
+One thing changed that the criteria did not ask for. The emulator's output
+used to go to a file beside the config, because the HUD owned this terminal.
+On the windowed path the HUD no longer does, so DOSBox writes straight into
+the log window, which is what "the host's own window shows emulator output"
+means. `--plain` still redirects to the file, because a printed table and an
+emulator writing to one terminal is a mess.
