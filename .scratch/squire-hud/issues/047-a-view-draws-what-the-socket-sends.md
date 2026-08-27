@@ -1,0 +1,28 @@
+# 047 — A view draws what the socket sends
+
+Type: `wayfinder:task` (AFK)
+Status: open
+Triage: `ready-for-agent`
+Blocked by: 043
+
+## What to build
+
+A second way to run `gbs`: as a **view**. It takes a view kind and a socket
+path, connects, and draws the party it is sent using the HUD built in 037.
+Nothing spawns it yet. You open a second terminal and run it by hand, which is
+also how it is demonstrated.
+
+The view never reads the emulator and never learns an address. It draws, and
+it reflows on a resize exactly as the HUD does today.
+
+Keys are not wired back in this ticket. That is 049.
+
+## Acceptance criteria
+
+- [ ] `gbs` run as a view against a live host's socket draws the party, and
+      keeps drawing as the numbers change
+- [ ] The caption names the game and the slot the host is watching
+- [ ] The watch's notices reach the view
+- [ ] Resizing the view's window reflows it
+- [ ] The host quitting ends the view without an error message
+- [ ] A socket path that is not there says so plainly and exits non-zero

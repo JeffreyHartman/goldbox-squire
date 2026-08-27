@@ -146,7 +146,7 @@ Settled in the grilling session of 2026-08-25, before any code.
 
 - **The window size is remembered under `[hud]`.** Read from the terminal at
   every draw, written on the way out, ignored when it is nonsense. Nothing
-  acts on it until 043. See `issues/039-remember-window-size.md`.
+  acts on it until 048. See `issues/039-remember-window-size.md`.
 
 - **The keys are settled, and the slot repick survives raw mode.** `q` quits,
   the arrows move the highlight, `a` and `c` are the toggles, the number keys
@@ -160,20 +160,31 @@ Settled in the grilling session of 2026-08-25, before any code.
   waits for the README to exist, so it moved to
   `issues/045-readme-says-how-to-place-the-window.md`. Split 2026-08-26.
 
-- **The app id is `goldbox-squire`, and it is a constant.** `terminals::APP_ID`
-  fills `{id}`; `command_line` does not take a name. A compositor rule is
-  written by hand once and breaks silently if the string drifts, so there is
-  one owner and no caller free to pass another. See
-  `issues/041-name-the-window.md`.
+- **The app id is one owned name per view kind.** `command_line` fills `{id}`
+  from a view kind, and the HUD's is `goldbox-squire-hud`. A compositor rule is
+  written by hand once and breaks silently if the string drifts, so Squire owns
+  every name and no caller can invent one. 041 first pinned a single constant,
+  `goldbox-squire`, because "there was never more than one name to pass"; ADR
+  0005 gives the map and the journal windows of their own, so that reason
+  expired and 046 puts the parameter back typed. See
+  `issues/041-name-the-window.md` and `issues/046-one-app-id-per-view.md`.
 
-- **The HUD cannot read the emulator from a sibling process.** 043 says the
-  launching terminal keeps the emulator handle while the HUD moves to a second
-  window. Those two cannot both hold: Yama permits a memory read of a
-  descendant, and a sibling is not one, so 043 as written works only at
-  `ptrace_scope = 0`, which ticket 011 refuses to ship. The fix is a choice
-  between inverting who launches DOSBox and passing an open `/proc/<pid>/mem`,
-  and it is not made yet. See the note at the bottom of
-  `issues/043-spawn-the-hud-window.md`.
+- **One host reads, many views draw.** `gbs` keeps the emulator, stays its
+  parent and reads it with `process_vm_readv`, and hands the party out over a
+  unix socket. Each window is a view: it draws what it is sent and sends the
+  user's decisions back. A window can never read the emulator itself, because
+  Yama permits a read of a descendant and only one process can be DOSBox's
+  parent, so a second window would need the numbers shipped to it whatever
+  happened. Inverting who launches was rejected for that reason, and passing
+  an open `/proc/<pid>/mem` was rejected for costing `process_vm_readv`. The
+  035 seams, `Screen` and `Keys`, become the wire in both directions.
+  Settled 2026-08-26. See
+  [ADR 0005](../../docs/adr/0005-one-host-reads-many-views-draw.md), and
+  `issues/043-the-host-serves-the-party-on-a-socket.md`,
+  `issues/046-one-app-id-per-view.md`,
+  `issues/047-a-view-draws-what-the-socket-sends.md`,
+  `issues/048-the-host-spawns-the-hud-and-becomes-the-log.md` and
+  `issues/049-keys-travel-from-the-view-back-to-the-host.md`.
 
 ## Not yet specified
 

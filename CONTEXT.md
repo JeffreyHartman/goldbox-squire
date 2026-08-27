@@ -154,8 +154,25 @@ record table, with one difference: a record table is Squire's, and a terminal
 entry can be the user's. A terminal Squire does not know is still launched, at
 whatever size the terminal chose.
 
-**App id.** The name the HUD's window reports to the desktop. Squire sets it so
+**App id.** The name a view's window reports to the desktop. Squire sets it so
 that the user can write one compositor rule and have the window land where they
-want it every launch. Squire cannot place its own window and never will. The
-name is `goldbox-squire`, one owned constant, because a rule written by hand
-against it breaks silently if it drifts.
+want it every launch. Squire cannot place its own window and never will. There
+is one name per view kind, `goldbox-squire-hud` and one for each view added
+after it, from a fixed list Squire owns, because a rule written by hand against
+a name breaks silently if the name drifts, and one shared name would place the
+map wherever it places the HUD.
+
+**Host.** The gbs process that launched the emulator and reads it. There is one
+per run. It owns the anchor, the watch loop, the emulator handle and the socket,
+and it is the only process permitted to read the emulator's memory, because it
+is the only one that is its parent. Its own terminal shows the log.
+
+**View.** A window Squire draws in, as a process of its own: the HUD today, a
+map or a journal later. A view connects to the host's socket, draws the party
+it is sent, and sends the user's decisions back. It never reads the emulator.
+Views are throwaway. Closing one does not end the run, and quitting the host
+closes them all. Not a panel, which is one region inside a single view.
+
+**Log.** What the host's own terminal shows once the views have the party:
+rescans, anchor losses, and the emulator's own output. The window the user
+typed in does not go back to a prompt, and this is what it becomes.

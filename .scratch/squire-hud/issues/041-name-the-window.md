@@ -53,3 +53,13 @@ carries it, and a user entry with no `app_id` arguments still produces a
 command line that spawns.
 
 The README half is [045](045-readme-says-how-to-place-the-window.md).
+
+## Later note, 2026-08-26
+
+This ticket's reasoning for a single constant was that "there was never more
+than one name to pass". [ADR 0005](../../../docs/adr/0005-one-host-reads-many-views-draw.md)
+ends that: the map and the journal get windows of their own, and the user
+writes one compositor rule per window, so one shared name would place the map
+wherever it places the HUD. `046` puts the parameter back as a view kind from
+a fixed list, which still leaves no caller free to invent a name. The answer
+above is otherwise unchanged.
