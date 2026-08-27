@@ -33,14 +33,17 @@ that disconnects is dropped and the run carries on.
 
 ## Acceptance criteria
 
-- [ ] `gbs` listens on `$XDG_RUNTIME_DIR/goldbox-squire/<pid>.sock`, and the
-      file is gone after the run
-- [ ] Anything that connects receives the party as it changes, and the
+- [x] The host listens on `$XDG_RUNTIME_DIR/goldbox-squire/<pid>.sock`, and
+      the file is gone after the run
+- [x] Anything that connects receives the party as it changes, and the
       watch's notices
-- [ ] A client connecting after the party was found is caught up at once,
+- [x] A client connecting after the party was found is caught up at once,
       without waiting for the next poll
-- [ ] A client that connects, disconnects and connects again does not disturb
+- [x] A client that connects, disconnects and connects again does not disturb
       the run
-- [ ] Quit and repick sent by a client arrive at the loop as `Interrupt`
-- [ ] Every one of the above is tested with no terminal involved
-- [ ] `--plain` creates no socket
+- [x] Quit and repick sent by a client arrive at the loop as `Interrupt`
+- [x] Every one of the above is tested with no terminal involved
+- [ ] `--plain` creates no socket — moved to 048, which is where `main` first
+      builds a host. Building one here would mean a run with a socket, a log
+      and no window at all, or a second `Screen` that fans out to both and is
+      deleted again one ticket later.

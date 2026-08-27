@@ -134,48 +134,9 @@ fn row(c: &Character) -> [String; 6] {
 
 /// The party as JSON.
 ///
-/// Written by hand rather than derived, so that the shape of the output is
-/// decided here and does not follow whatever the internal types happen to be.
+/// The shape is [`crate::wire`]'s, which is also what crosses the socket to a
+/// view. One party format in the program rather than two that can drift.
 pub fn json(party: &Party) -> String {
-    let state = match party.state {
-        PartyState::Live => "live",
-        PartyState::Partial => "partial",
-        PartyState::NotFound => "not_found",
-    };
-    let characters: Vec<serde_json::Value> = party.characters.iter().map(character_json).collect();
-
-    serde_json::to_string_pretty(&serde_json::json!({
-        "state": state,
-        "characters": characters,
-    }))
-    .expect("this structure always serialises")
-}
-
-fn character_json(c: &Character) -> serde_json::Value {
-    serde_json::json!({
-        "name": c.name,
-        "race": c.race,
-        "race_raw": c.race_raw,
-        "class": c.class,
-        "class_raw": c.class_raw,
-        "gender": c.gender,
-        "alignment": c.alignment,
-        "status": c.status,
-        "status_raw": c.status_raw,
-        "level": c.level,
-        "hit_points": { "current": c.hit_points_current, "maximum": c.hit_points_maximum },
-        "armor_class": c.armor_class,
-        "thac0": c.thac0,
-        "experience": c.experience,
-        "age": c.age,
-        "abilities": {
-            "strength": c.strength,
-            "strength_exceptional": c.strength_exceptional,
-            "intelligence": c.intelligence,
-            "wisdom": c.wisdom,
-            "dexterity": c.dexterity,
-            "constitution": c.constitution,
-            "charisma": c.charisma,
-        },
-    })
+    serde_json::to_string_pretty(&crate::wire::party_value(party))
+        .expect("this structure always serialises")
 }
