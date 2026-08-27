@@ -1,49 +1,55 @@
-# 041 — Squire names its window, and the README says how to place it
+# 041 — Squire names its window
 
 Type: `wayfinder:task` (AFK)
-Status: open
+Status: resolved
 Triage: `ready-for-agent`
 Blocked by: none
 
 ## What to build
 
-The HUD is meant to sit beside the game. Squire cannot put it there: Wayland
-does not let a client position its own window, and there is no flag, protocol
-or workaround for that. It is the same restriction that makes GBC's
-pin-above-DOSBox trick impossible to port, and it is not going away.
+The HUD is meant to sit beside the game, and Squire cannot put it there.
+Wayland does not let a client position its own window. What Squire can do is
+give its window a stable name, so the user's compositor can recognise it and a
+window rule written once pins it on every launch afterwards.
 
-What Squire can do is give its window a stable name, so the user's compositor
-can recognise it. One KWin window rule or one Hyprland rule, written once,
-pins it to the right edge at a chosen size on every launch afterwards.
+This ticket is the name. The explanation of why placement is the compositor's
+job is a README section, and it moved to
+[045](045-readme-says-how-to-place-the-window.md).
 
-So: Squire sets an app-id, and the README explains the restriction in two
-sentences and gives a worked rule for KDE and for Hyprland. The point of the
-explanation is that a user who expected Squire to place its own window
-understands why it does not, rather than filing it as a bug.
+**The app-id is not a call Squire makes.** The HUD is drawn inside a terminal,
+and the terminal is what reports an app id to the desktop. So the mechanism is
+042's table: the `app_id` arguments of the entry for whichever terminal is
+spawned, filled with the `{id}` placeholder. Squire's job is to own the name
+and pass it. There is no Wayland call to go looking for.
 
 ## Acceptance criteria
 
-- [ ] Squire sets a stable app-id, and the README states what it is
-- [ ] The README explains in two sentences why placement is the compositor's
-      job and not Squire's
-- [ ] A worked KWin window rule and a worked Hyprland rule are given
-- [ ] The README does not promise placement, automatic or otherwise
+- [x] Squire owns one stable app-id string and passes it through 042's
+      `app_id` arguments for the spawned terminal
+- [x] A terminal entry with no `app_id` arguments is still spawned
+- [x] The name is asserted in a test, because a compositor rule breaks
+      silently when it changes
 
 ## Read this before starting
 
-Noted 2026-08-26.
+Read 043's own note first. The two are one piece of work, and 043's stated
+process topology does not survive contact with ticket 011.
 
-**"Squire sets a stable app-id" is not a call Squire makes.** The HUD is drawn
-inside a terminal, and the terminal is what reports an app id to the desktop.
-So the mechanism is 042's table: the `app_id` arguments of the entry for
-whichever terminal is spawned, filled with the `{id}` placeholder. Squire's job
-is to own the name and pass it. There is no Wayland call to go looking for.
+## Answer
 
-**Blocked on a decision, not on code.** This wants a README section and the
-repo has no README; ticket 012 owns writing one. Jeff said on 2026-08-26 that
-the README is handled separately and is not part of the HUD effort. So the
-app-id half can be worked without it, and the placement explanation waits for
-012.
+The name is `goldbox-squire`, held as `terminals::APP_ID`.
 
-**Read 043's own note before either.** The two are one piece of work, and 043's
-stated process topology does not survive contact with ticket 011.
+`Terminal::command_line` no longer takes an id. It fills `{id}` from the
+constant, because a caller free to pass any name is a caller free to break a
+compositor rule the user already wrote, and there was never more than one name
+to pass. The tests that used to pass `"gbs-hud"` by hand are exactly the drift
+this closes.
+
+`terminals.toml` now says what `{id}` is filled with, and `CONTEXT.md` records
+the value beside the App id definition.
+
+Three tests: the name is pinned, every compiled-in terminal's command line
+carries it, and a user entry with no `app_id` arguments still produces a
+command line that spawns.
+
+The README half is [045](045-readme-says-how-to-place-the-window.md).

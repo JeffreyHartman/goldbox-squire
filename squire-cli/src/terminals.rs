@@ -17,6 +17,13 @@ use serde::Deserialize;
 /// The compiled-in table. Parsed, not read from disk.
 const BUILT_IN: &str = include_str!("../terminals.toml");
 
+/// The name Squire gives its window, and the only one it ever gives.
+///
+/// This is what a compositor rule matches on. The user writes that rule once,
+/// by hand, so the string is owned here rather than passed in: a caller free
+/// to pass any name is a caller free to break every rule already written.
+pub const APP_ID: &str = "goldbox-squire";
+
 /// The placeholders an entry may use. Anything else is a typo, and a typo
 /// that reached the command line would be a window nobody can find.
 const PLACEHOLDERS: [&str; 3] = ["{id}", "{cols}", "{rows}"];
@@ -43,9 +50,9 @@ impl Terminal {
     ///
     /// The command is always last, because at least one terminal refuses to
     /// read anything after it.
-    pub fn command_line(&self, id: &str, cols: u16, rows: u16, command: &[String]) -> Vec<String> {
+    pub fn command_line(&self, cols: u16, rows: u16, command: &[String]) -> Vec<String> {
         let fill = |arg: &String| {
-            arg.replace("{id}", id)
+            arg.replace("{id}", APP_ID)
                 .replace("{cols}", &cols.to_string())
                 .replace("{rows}", &rows.to_string())
         };

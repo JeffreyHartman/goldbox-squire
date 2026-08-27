@@ -15,7 +15,7 @@
 #
 # Placeholders, substituted into every argument:
 #
-#   {id}    the window name Squire asks for
+#   {id}    the window name Squire asks for, always `goldbox-squire`
 #   {cols}  columns, in character cells
 #   {rows}  rows, in character cells
 #

@@ -156,4 +156,6 @@ whatever size the terminal chose.
 
 **App id.** The name the HUD's window reports to the desktop. Squire sets it so
 that the user can write one compositor rule and have the window land where they
-want it every launch. Squire cannot place its own window and never will.
+want it every launch. Squire cannot place its own window and never will. The
+name is `goldbox-squire`, one owned constant, because a rule written by hand
+against it breaks silently if it drifts.

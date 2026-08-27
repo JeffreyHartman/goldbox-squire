@@ -153,6 +153,19 @@ Settled in the grilling session of 2026-08-25, before any code.
   are reserved, and Enter steps the HUD aside so the one wizard asks the one
   question. See `issues/040-hud-keys.md`.
 
+- **Naming the window and explaining placement are two tickets.** 041 is the
+  app-id, which is code: one owned string passed through 042's `app_id`
+  arguments, with no Wayland call involved. The explanation of why a
+  compositor rule and not Squire does the placing is README prose, and it
+  waits for the README to exist, so it moved to
+  `issues/045-readme-says-how-to-place-the-window.md`. Split 2026-08-26.
+
+- **The app id is `goldbox-squire`, and it is a constant.** `terminals::APP_ID`
+  fills `{id}`; `command_line` does not take a name. A compositor rule is
+  written by hand once and breaks silently if the string drifts, so there is
+  one owner and no caller free to pass another. See
+  `issues/041-name-the-window.md`.
+
 - **The HUD cannot read the emulator from a sibling process.** 043 says the
   launching terminal keeps the emulator handle while the HUD moves to a second
   window. Those two cannot both hold: Yama permits a memory read of a
