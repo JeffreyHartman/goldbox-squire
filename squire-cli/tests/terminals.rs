@@ -1,6 +1,6 @@
 //! The terminal table: the compiled-in defaults, and the user's file over them.
 
-use squire_cli::terminals::{self, Terminal};
+use squire_cli::terminals::{self, Terminal, ViewKind};
 
 fn named<'a>(list: &'a [Terminal], name: &str) -> &'a Terminal {
     list.iter()
@@ -34,11 +34,11 @@ fn the_command_line_carries_the_name_the_size_and_the_command() {
     let list = terminals::built_in();
     let kitty = named(&list, "kitty");
 
-    let argv = kitty.command_line(110, 50, &["gbs".into(), "--hud".into()]);
+    let argv = kitty.command_line(ViewKind::Hud, 110, 50, &["gbs".into(), "--hud".into()]);
 
     assert_eq!(argv[0], "kitty");
     assert!(
-        argv.contains(&"--app-id=goldbox-squire".to_string()),
+        argv.contains(&"--app-id=goldbox-squire-hud".to_string()),
         "{argv:?}"
     );
     assert!(
@@ -60,7 +60,7 @@ fn the_command_is_last_even_when_the_terminal_needs_a_flag_before_it() {
     let list = terminals::built_in();
     let alacritty = named(&list, "alacritty");
 
-    let argv = alacritty.command_line(80, 24, &["gbs".into()]);
+    let argv = alacritty.command_line(ViewKind::Hud, 80, 24, &["gbs".into()]);
 
     let e = argv
         .iter()
@@ -108,10 +108,10 @@ fn a_terminal_squire_never_heard_of_is_added_by_the_user_file() {
     assert!(problems.is_empty(), "{problems:?}");
     let new = named(&list, "some-terminal-from-2031");
     assert_eq!(
-        new.command_line(100, 40, &["gbs".into()]),
+        new.command_line(ViewKind::Hud, 100, 40, &["gbs".into()]),
         vec![
             "some-terminal-from-2031",
-            "--name=goldbox-squire",
+            "--name=goldbox-squire-hud",
             "--cells=100,40",
             "--run",
             "gbs"
@@ -236,10 +236,10 @@ fn an_entry_that_leaves_out_a_field_gets_an_empty_one_rather_than_a_refusal() {
     let t = named(&list, "plain-terminal");
     assert!(t.exec.is_empty());
     assert_eq!(
-        t.command_line(80, 24, &["gbs".into()]),
+        t.command_line(ViewKind::Hud, 80, 24, &["gbs".into()]),
         vec![
             "plain-terminal",
-            "--name=goldbox-squire",
+            "--name=goldbox-squire-hud",
             "--cells=80x24",
             "gbs"
         ]
@@ -247,22 +247,48 @@ fn an_entry_that_leaves_out_a_field_gets_an_empty_one_rather_than_a_refusal() {
 }
 
 #[test]
-fn the_app_id_is_the_one_name_a_compositor_rule_matches() {
+fn each_view_kind_has_one_owned_name_a_compositor_rule_matches() {
     // A user writes their KWin or Hyprland rule once, by hand, against this
     // string. Changing it breaks every rule already written, silently, so the
-    // name is pinned here rather than left to whoever calls `command_line`.
-    assert_eq!(terminals::APP_ID, "goldbox-squire");
+    // names are pinned here rather than left to whoever calls `command_line`.
+    assert_eq!(ViewKind::Hud.app_id(), "goldbox-squire-hud");
 }
 
 #[test]
-fn every_window_squire_opens_carries_the_app_id() {
-    for t in terminals::built_in() {
-        let argv = t.command_line(80, 24, &["gbs".into()]);
+fn no_two_view_kinds_share_a_name() {
+    // Two views under one name means one compositor rule that places both, and
+    // the map lands wherever the HUD does.
+    let mut seen: Vec<&str> = Vec::new();
+    for kind in ViewKind::ALL {
         assert!(
-            argv.iter().any(|a| a.contains(terminals::APP_ID)),
-            "{} opens an unnamed window: {argv:?}",
-            t.name
+            !seen.contains(&kind.app_id()),
+            "{} reuses {}",
+            kind.as_str(),
+            kind.app_id()
         );
+        seen.push(kind.app_id());
+    }
+}
+
+#[test]
+fn a_view_kind_is_named_on_the_command_line_and_nowhere_else() {
+    for kind in ViewKind::ALL {
+        assert_eq!(ViewKind::parse(kind.as_str()), Some(kind));
+    }
+    assert_eq!(ViewKind::parse("journal"), None);
+}
+
+#[test]
+fn every_window_squire_opens_carries_its_view_kind_name() {
+    for t in terminals::built_in() {
+        for kind in ViewKind::ALL {
+            let argv = t.command_line(kind, 80, 24, &["gbs".into()]);
+            assert!(
+                argv.iter().any(|a| a.contains(kind.app_id())),
+                "{} opens an unnamed window: {argv:?}",
+                t.name
+            );
+        }
     }
 }
 
@@ -281,7 +307,7 @@ fn a_terminal_that_cannot_name_its_window_is_still_spawned() {
     assert!(problems.is_empty(), "{problems:?}");
     let t = named(&list, "nameless-terminal");
     assert_eq!(
-        t.command_line(80, 24, &["gbs".into()]),
+        t.command_line(ViewKind::Hud, 80, 24, &["gbs".into()]),
         vec!["nameless-terminal", "--cells=80x24", "gbs"]
     );
 }

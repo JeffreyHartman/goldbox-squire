@@ -15,7 +15,8 @@
 #
 # Placeholders, substituted into every argument:
 #
-#   {id}    the window name Squire asks for, always `goldbox-squire`
+#   {id}    the window name Squire asks for: one per view, and the HUD is
+#           `goldbox-squire-hud`
 #   {cols}  columns, in character cells
 #   {rows}  rows, in character cells
 #
