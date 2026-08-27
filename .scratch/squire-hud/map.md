@@ -212,6 +212,11 @@ Settled in the grilling session of 2026-08-25, before any code.
 
 ## Not yet specified
 
+- **What the `c` key means.** The key and the layout rule both decide how many
+  cards go across, and the status line's `auto` and `chosen` do not tell the
+  truth about which one won. See
+  `issues/051-auto-and-chosen-fight-over-the-columns.md`.
+
 - **Testing through a real terminal.** Nothing Squire owns has ever pressed a
   key or dragged a window, and the HUD's keys were dead in the spawned window
   with every test green. See `issues/050-a-real-terminal-proves-the-keys-work.md`.
