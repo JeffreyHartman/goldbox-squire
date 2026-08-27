@@ -1,7 +1,7 @@
 # 049 — Keys travel from the view back to the host
 
 Type: `wayfinder:task` (AFK)
-Status: open
+Status: resolved
 Triage: `ready-for-agent`
 Blocked by: 047
 
@@ -35,3 +35,14 @@ wrote to it directly, so a long question could have stalled the run and a
 partial write could have cut a message in half. Each view now has an unsent
 buffer that the host pushes at every pause and never blocks on. A view that
 never comes back is let go after a megabyte, which is minutes of party lines.
+
+## Answer
+
+The view polls its keyboard and its socket together, so neither answers a
+quarter of a second late. `Interrupt::Quit` and `Interrupt::Repick` become
+`view::quit_message` and `view::repick_message`; everything else stays in the
+view, because the host has no business knowing the highlight moved.
+
+Two tests send the view's own messages into a real host and check what the
+watch loop is handed, so the two halves of the wire are tested against each
+other rather than against a hand-written string.

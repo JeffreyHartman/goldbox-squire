@@ -1,7 +1,7 @@
 # 048 — The host spawns the HUD view, and its own window becomes the log
 
 Type: `wayfinder:task` (AFK)
-Status: open
+Status: resolved
 Triage: `ready-for-agent`
 Blocked by: 046, 047
 
@@ -44,3 +44,22 @@ On the windowed path the HUD no longer does, so DOSBox writes straight into
 the log window, which is what "the host's own window shows emulator output"
 means. `--plain` still redirects to the file, because a printed table and an
 emulator writing to one terminal is a mess.
+
+## Answer
+
+`squire-cli/src/spawn.rs` chooses the terminal and builds the command line;
+`main.rs` starts the host, opens the window, and runs the loop. Ten tests in
+`squire-cli/tests/spawn.rs`, and none opens a window.
+
+**Which terminal**, in order: `--terminal`, then `TERMINAL`, then the first
+terminal Squire knows that is on PATH. A terminal the user named is used
+whether Squire knows it or not, because naming one is the whole answer to
+"which terminal".
+
+**The window opens after the socket exists**, so a view never races the host
+and finds nothing to connect to.
+
+**A first run gets eighty by twenty-four**, which is what a terminal opens at
+when nobody says otherwise, and the next run uses whatever the window was
+dragged to. The view is the process that remembers it now, because the view
+is the process that knows it.

@@ -1,7 +1,7 @@
 # 046 — One app id per view
 
 Type: `wayfinder:task` (AFK)
-Status: open
+Status: resolved
 Triage: `ready-for-agent`
 Blocked by: none
 
@@ -26,3 +26,14 @@ invent a name, which was 041's real worry.
 - [x] No caller can pass a name that is not on the list
 - [x] `terminals.toml` says what `{id}` is filled with now
 - [x] `CONTEXT.md`'s App id entry matches
+
+## Answer
+
+`terminals::ViewKind` is the fixed list, and `Terminal::command_line` takes
+one. The HUD's name is `goldbox-squire-hud`. Four tests pin the names, check
+that no two kinds share one, check that a kind is named on the command line
+and nowhere else, and check that every compiled-in terminal carries the name
+it is given.
+
+`terminals.toml` and `CONTEXT.md` both say what `{id}` is filled with now, and
+041 carries a note saying its one-name reasoning expired.

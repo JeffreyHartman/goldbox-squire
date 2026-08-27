@@ -186,6 +186,30 @@ Settled in the grilling session of 2026-08-25, before any code.
   `issues/048-the-host-spawns-the-hud-and-becomes-the-log.md` and
   `issues/049-keys-travel-from-the-view-back-to-the-host.md`.
 
+- **The wire is JSON lines, and the party's shape on it is `--json`'s.** One
+  object per line in both directions, so a view can be anything that opens a
+  socket, and a sitting can be watched with `socat`. A view is caught up on
+  connect with a hello, the last party and the last notice, rather than
+  waiting for the next poll. Nothing a view sends can end a sitting. See
+  `issues/043-the-host-serves-the-party-on-a-socket.md`.
+
+- **The host never blocks on a view.** A view stops reading the socket for as
+  long as the slot question is on its screen, so the host buffers per view and
+  pushes at every pause. Writing straight through could have stalled the run
+  or cut a message in half. A view that never comes back is let go after a
+  megabyte. Found by 049's last acceptance criterion.
+
+- **The repick happens in the view, and only the answer crosses the wire.**
+  The wizard prints a menu and reads a line, and the user is looking at the
+  view's window rather than the log. The view sends the slot and the names it
+  resolved, so the host still owns the retarget and there is still one wizard.
+  See `issues/049-keys-travel-from-the-view-back-to-the-host.md`.
+
+- **The emulator writes into the log window.** Its output went to a file only
+  because the HUD used to own that terminal. `--plain` still redirects to the
+  file, because a printed table and an emulator on one terminal is a mess. See
+  `issues/048-the-host-spawns-the-hud-and-becomes-the-log.md`.
+
 ## Not yet specified
 
 - **What the roomy sizes hold.** Map, journal and combat were tabs in the

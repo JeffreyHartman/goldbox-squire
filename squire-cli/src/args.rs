@@ -70,10 +70,12 @@ USAGE:
 A bare `gbs` asks which game, where it is (the first time only; the answer is
 remembered per game), and which save slot. Unlimited Adventures keeps saves
 per adventure module, so it gets one more question: which adventure. Then gbs
-starts the game, waits for the party, and shows it on a screen you can glance
-at until the emulator exits or you press q. Each option below answers one of those questions in advance.
-In the menus, 0 goes back. A fresh install with no saved game can still be
-started: save inside the game, then press Enter in gbs to pick the save.
+starts the game and opens the HUD in a window of its own, which is what a
+compositor rule can place beside DOSBox. The window you typed in keeps the
+game and becomes the log. Each option below answers one of those questions in
+advance. In the menus, 0 goes back. A fresh install with no saved game can
+still be started: save inside the game, then press Enter in the HUD to pick
+the save.
 
 OPTIONS:
     --game <ID>        Which game to run, by its id (pool-of-radiance).
@@ -107,10 +109,11 @@ OPTIONS:
                        the supported path and needs no system change.
     -h, --help         Print this text.
 
-In the HUD: q, Escape or Ctrl-C quits, up and down move the highlight, a
-shows the ability scores, c changes how many cards sit across, and Enter picks
-a different save slot. The size you leave the window at is remembered in gbs's config file,
-under [hud], and used next time.
+In the HUD: q, Escape or Ctrl-C quits the run, up and down move the highlight,
+a shows the ability scores, c changes how many cards sit across, and Enter
+picks a different save slot. The size you leave the window at is remembered in
+gbs's config file, under [hud], and used next time. Closing the HUD does not
+end the run; quitting gbs closes the HUD.
 
 Emulator settings live in a per-game file gbs creates in its config folder
 and never touches again; the first launch names it.
