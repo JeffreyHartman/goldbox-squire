@@ -25,11 +25,38 @@ pub const SLOT_LETTERS: [char; 10] = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I
 /// The most characters a save slot holds.
 const MAX_CHARACTERS: usize = 6;
 
-/// One populated save slot: its letter and its party's names in marching order.
+/// One character of a save slot, as the save picker shows it.
+///
+/// The level is decoded from the file. That is safe here and nowhere else:
+/// the picker describes the save on disk, while the HUD describes the running
+/// game, and only the name survives the trip between the two.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SlotCharacter {
+    pub name: String,
+    /// The highest class level. `None` when the record does not hold one: the
+    /// Buck Rogers tables have no per-class levels, and a damaged file decodes
+    /// to nothing.
+    pub level: Option<u8>,
+}
+
+/// One populated save slot: its letter, its party in marching order, and when
+/// the slot was last written.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PopulatedSlot {
     pub letter: char,
-    pub names: Vec<String>,
+    pub party: Vec<SlotCharacter>,
+    /// When any of this slot's own save files last changed. This is what tells
+    /// two slots holding the same party apart. `None` when no file's time can
+    /// be read, which a front end must say rather than dress up as a date.
+    pub modified: Option<SystemTime>,
+}
+
+impl PopulatedSlot {
+    /// The party's names in marching order, which is what the scanner anchors
+    /// on.
+    pub fn names(&self) -> Vec<String> {
+        self.party.iter().map(|c| c.name.clone()).collect()
+    }
 }
 
 /// One design (adventure module) holding at least one populated save slot.
@@ -41,8 +68,10 @@ pub struct Design {
     /// The design's save folder, absolute.
     pub save_dir: PathBuf,
     /// When a save file in it last changed. Orders the wizard's list, newest
-    /// first, so Enter picks the design played last.
-    pub modified: SystemTime,
+    /// first, so Enter picks the design played last. A design whose time
+    /// cannot be read sorts last, because a guess would move the Enter
+    /// default onto it.
+    pub modified: Option<SystemTime>,
 }
 
 /// The party names of one save slot, in marching order.
@@ -73,7 +102,7 @@ pub fn slot_party_records(
     if records.is_empty() {
         let populated: Vec<String> = SLOT_LETTERS
             .iter()
-            .filter(|l| !read_slot(game, &files, **l).is_empty())
+            .filter(|l| slot_is_populated(game, &files, **l))
             .map(|l| l.to_string())
             .collect();
         let hint = if populated.is_empty() {
@@ -104,8 +133,12 @@ pub fn populated_slots(
     let slots: Vec<PopulatedSlot> = SLOT_LETTERS
         .iter()
         .filter_map(|&letter| {
-            let names = read_slot(game, &files, letter);
-            (!names.is_empty()).then_some(PopulatedSlot { letter, names })
+            let party = read_slot_party(game, &files, letter);
+            (!party.is_empty()).then(|| PopulatedSlot {
+                letter,
+                party,
+                modified: slot_modified(game, &files, letter),
+            })
         })
         .collect();
 
@@ -162,7 +195,7 @@ pub fn designs(game: &Game, game_dir: impl AsRef<Path>) -> Result<Vec<Design>, E
         };
         let populated = SLOT_LETTERS
             .iter()
-            .any(|&letter| !read_slot(game, &files, letter).is_empty());
+            .any(|&letter| slot_is_populated(game, &files, letter));
         if !populated {
             continue;
         }
@@ -263,12 +296,46 @@ fn normalize_letter(letter: char) -> Result<char, Error> {
     Ok(letter)
 }
 
-/// One slot's names, in marching order. Empty when the slot is not populated.
-fn read_slot(game: &Game, files: &HashMap<String, PathBuf>, letter: char) -> Vec<String> {
+/// Whether this slot holds at least one readable character.
+fn slot_is_populated(game: &Game, files: &HashMap<String, PathBuf>, letter: char) -> bool {
+    !read_slot_records(game, files, letter).is_empty()
+}
+
+/// One slot's party, in marching order. Empty when the slot is not populated.
+///
+/// A record too damaged to decode still counts: its name parsed, which is all
+/// the slot needs to be real, and the level falls back to zero.
+fn read_slot_party(
+    game: &Game,
+    files: &HashMap<String, PathBuf>,
+    letter: char,
+) -> Vec<SlotCharacter> {
     read_slot_records(game, files, letter)
         .into_iter()
-        .map(|(name, _)| name)
+        .map(|(name, bytes)| SlotCharacter {
+            name,
+            // A decoded zero means the table found no level field, not a
+            // level-zero character: there is no such thing.
+            level: record::decode(&game.table, &bytes)
+                .ok()
+                .map(|c| c.level)
+                .filter(|level| *level > 0),
+        })
         .collect()
+}
+
+/// When this slot's own save files last changed.
+///
+/// Every file the slot owns counts, whatever its extension: the games rewrite
+/// the item and spell files alongside the character record on a save.
+fn slot_modified(
+    game: &Game,
+    files: &HashMap<String, PathBuf>,
+    letter: char,
+) -> Option<SystemTime> {
+    let (prefix, _) = shape_pattern(game);
+    let own = format!("{prefix}{}", letter.to_ascii_lowercase());
+    newest_of(files, |name| name.starts_with(&own))
 }
 
 /// One slot as (name, record bytes) pairs, in marching order. Empty when the
@@ -373,14 +440,24 @@ fn party_file_records(game: &Game, bytes: &[u8]) -> Vec<(String, Vec<u8>)> {
 }
 
 /// When any of this game's save files in `files` last changed.
-fn newest_save(game: &Game, files: &HashMap<String, PathBuf>) -> SystemTime {
+fn newest_save(game: &Game, files: &HashMap<String, PathBuf>) -> Option<SystemTime> {
     let (prefix, ext) = shape_pattern(game);
+    newest_of(files, |name| {
+        name.starts_with(prefix) && name.ends_with(&ext)
+    })
+}
+
+/// The newest modification time among the files whose name `wanted` accepts,
+/// or `None` when nothing matches and when no time can be read.
+fn newest_of(
+    files: &HashMap<String, PathBuf>,
+    wanted: impl Fn(&str) -> bool,
+) -> Option<SystemTime> {
     files
         .iter()
-        .filter(|(name, _)| name.starts_with(prefix) && name.ends_with(&ext))
+        .filter(|(name, _)| wanted(name))
         .filter_map(|(_, path)| path.metadata().ok()?.modified().ok())
         .max()
-        .unwrap_or(SystemTime::UNIX_EPOCH)
 }
 
 /// A direct child directory with this name, whatever case it is written in.

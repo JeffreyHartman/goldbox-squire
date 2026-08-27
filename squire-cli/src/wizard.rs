@@ -14,10 +14,12 @@
 
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use squire_core::{discover, games, saves};
 
 use crate::config::{Config, InstallKind};
+use crate::picker;
 
 /// What one question came back with.
 enum Answer<T> {
@@ -274,7 +276,7 @@ pub fn repick<R: BufRead, W: Write>(
                 .into_iter()
                 .find(|s| s.letter == letter)
                 .expect("ask_slot only returns populated letters")
-                .names;
+                .names();
             Ok(Some((letter, names)))
         }
         Answer::Back => Ok(None),
@@ -339,9 +341,8 @@ fn ask_design<R: BufRead, W: Write>(
     designs: &[saves::Design],
 ) -> Result<Answer<std::path::PathBuf>, String> {
     let say = |e: &mut W| -> std::io::Result<()> {
-        writeln!(e, "Which adventure?")?;
-        for (n, design) in designs.iter().enumerate() {
-            writeln!(e, "  {}. {}", n + 1, design.name)?;
+        for line in picker::design_lines(designs, SystemTime::now()) {
+            writeln!(e, "{line}")?;
         }
         write!(e, "Press Enter for 1, type a number, or 0 to go back: ")?;
         e.flush()
@@ -479,9 +480,11 @@ fn ask_dir<R: BufRead, W: Write>(
     }
 }
 
-/// Question 3, every run: which save slot? One entry per populated slot,
-/// with the party's names. Picking by recognising your party beats
-/// remembering a letter (ADR 0002).
+/// Question 3, every run: which save slot? One entry per populated slot, in
+/// letter order, with the party and when the slot was last saved. Picking by
+/// recognising your party beats remembering a letter (ADR 0002), and the time
+/// is what separates two slots holding the same party. [`crate::picker`]
+/// builds the entries.
 fn ask_slot<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
@@ -490,9 +493,8 @@ fn ask_slot<R: BufRead, W: Write>(
     let default = slots[0].letter;
 
     let say = |e: &mut W| -> std::io::Result<()> {
-        writeln!(e, "Which save slot?")?;
-        for slot in slots {
-            writeln!(e, "  {} — {}", slot.letter, slot.names.join(", "))?;
+        for line in picker::slot_menu(slots, SystemTime::now()) {
+            writeln!(e, "{line}")?;
         }
         write!(
             e,

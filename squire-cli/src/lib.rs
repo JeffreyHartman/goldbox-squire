@@ -10,6 +10,7 @@ pub mod keys;
 pub mod layout;
 pub mod manual;
 pub mod output;
+pub mod picker;
 pub mod terminals;
 pub mod watch;
 pub mod wizard;

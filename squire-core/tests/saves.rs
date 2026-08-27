@@ -127,9 +127,46 @@ fn enumerates_the_populated_slots_with_their_names() {
 
     assert_eq!(slots.len(), 2);
     assert_eq!(slots[0].letter, 'A');
-    assert_eq!(slots[0].names, vec!["ALPHA ONE", "ALPHA TWO"]);
+    assert_eq!(slots[0].names(), vec!["ALPHA ONE", "ALPHA TWO"]);
     assert_eq!(slots[1].letter, 'J');
-    assert_eq!(slots[1].names, vec!["JULIET ONE"]);
+    assert_eq!(slots[1].names(), vec!["JULIET ONE"]);
+}
+
+#[test]
+fn a_populated_slot_carries_each_character_level() {
+    // The save picker shows the levels, so the walk decodes them alongside
+    // the names. Only the name is ever trusted for the live scan.
+    let dir = tempdir();
+    write_save_at_level(&dir, 'A', 1, "ALPHA ONE", 7);
+    write_save_at_level(&dir, 'A', 2, "ALPHA TWO", 3);
+
+    let slots = saves::populated_slots(&por(), &dir).unwrap();
+
+    let levels: Vec<Option<u8>> = slots[0].party.iter().map(|c| c.level).collect();
+    assert_eq!(levels, vec![Some(7), Some(3)]);
+}
+
+#[test]
+fn each_slot_is_stamped_with_its_own_newest_save_file() {
+    // The whole point of the stamp is telling two slots apart, so a slot's
+    // time must come from its own files and no others.
+    let dir = tempdir();
+    write_save(&dir, 'A', 1, "ALPHA");
+    write_save(&dir, 'B', 1, "BRAVO");
+    let past = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    set_mtime(&format!("{dir}/CHRDATA1.SAV"), past);
+
+    let slots = saves::populated_slots(&por(), &dir).unwrap();
+
+    let gap = slots[1]
+        .modified
+        .expect("slot B's file has a time")
+        .duration_since(slots[0].modified.expect("slot A's file has a time"))
+        .expect("slot B was written after slot A");
+    assert!(
+        gap > std::time::Duration::from_secs(3000),
+        "slot A kept the hour-old time, slot B its own: {gap:?}"
+    );
 }
 
 #[test]
@@ -323,6 +360,27 @@ fn designs_lists_only_designs_with_a_saved_party_newest_first() {
 }
 
 #[test]
+fn a_party_file_slot_is_stamped_from_its_own_savgam_file() {
+    let dir = tempdir();
+    std::fs::write(format!("{dir}/SAVGAMA.CSV"), savgam_bytes(&["ALPHA"])).unwrap();
+    std::fs::write(format!("{dir}/SAVGAMB.CSV"), savgam_bytes(&["BRAVO"])).unwrap();
+    let past = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    set_mtime(&format!("{dir}/SAVGAMA.CSV"), past);
+
+    let slots = saves::populated_slots(&frua(), &dir).unwrap();
+
+    let gap = slots[1]
+        .modified
+        .expect("slot B's file has a time")
+        .duration_since(slots[0].modified.expect("slot A's file has a time"))
+        .expect("slot B was written after slot A");
+    assert!(
+        gap > std::time::Duration::from_secs(3000),
+        "each slot keeps its own file's time: {gap:?}"
+    );
+}
+
+#[test]
 fn a_game_without_designs_refuses_the_designs_question() {
     let dir = tempdir();
 
@@ -387,6 +445,16 @@ fn tempdir() -> String {
 
 fn write_save(dir: &str, slot: char, index: usize, name: &str) {
     write_save_named(dir, &format!("CHRDAT{slot}{index}.SAV"), name);
+}
+
+/// One Pool of Radiance save file whose character is a fighter of this level.
+fn write_save_at_level(dir: &str, slot: char, index: usize, name: &str, level: u8) {
+    let file = format!("CHRDAT{slot}{index}.SAV");
+    write_save_named(dir, &file, name);
+    let path = format!("{dir}/{file}");
+    let mut bytes = std::fs::read(&path).unwrap();
+    bytes[0x098] = level; // level_fighter
+    std::fs::write(&path, bytes).unwrap();
 }
 
 fn write_save_named(dir: &str, file: &str, name: &str) {

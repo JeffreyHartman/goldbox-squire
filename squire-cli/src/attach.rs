@@ -73,7 +73,7 @@ pub fn resolve(args: &Args, config: &Config) -> Result<Resolved, String> {
         .into_iter()
         .find(|s| s.letter == slot)
         .expect("the slot was validated against this list")
-        .names;
+        .names();
 
     Ok(Resolved {
         game_id,

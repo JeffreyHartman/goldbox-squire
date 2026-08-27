@@ -32,7 +32,7 @@ fn main() {
         }
     };
     for slot in slots {
-        println!("slot {}: {}", slot.letter, slot.names.join(", "));
+        println!("slot {}: {}", slot.letter, slot.names().join(", "));
         let records = match saves::slot_party_records(&game, &dir, slot.letter) {
             Ok(records) => records,
             Err(e) => {
