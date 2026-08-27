@@ -340,16 +340,19 @@ fn the_usage_says_where_the_window_size_is_remembered() {
     // A remembered thing the user cannot find is a hidden behaviour.
     assert!(squire_cli::args::USAGE.contains("[hud]"));
     assert!(squire_cli::args::USAGE.contains("--plain"));
+    // Searched with the line breaks taken out, so that rewrapping a
+    // paragraph is not a failing test.
+    let usage = squire_cli::args::USAGE
+        .split_whitespace()
+        .collect::<Vec<&str>>()
+        .join(" ");
     for key in [
         "q, Escape or Ctrl-C quits",
         "up and down",
-        "a\nshows",
+        "shows the ability scores",
         "c changes",
         "Enter picks",
     ] {
-        assert!(
-            squire_cli::args::USAGE.contains(key),
-            "{key} is undocumented"
-        );
+        assert!(usage.contains(key), "{key} is undocumented");
     }
 }

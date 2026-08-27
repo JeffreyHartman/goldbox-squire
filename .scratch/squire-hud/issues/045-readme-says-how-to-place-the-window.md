@@ -3,7 +3,7 @@
 Type: `wayfinder:task` (AFK)
 Status: open
 Triage: `ready-for-agent`
-Blocked by: 012, 041
+Blocked by: 012, 041, 046
 
 ## What to build
 

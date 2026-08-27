@@ -17,12 +17,43 @@ use serde::Deserialize;
 /// The compiled-in table. Parsed, not read from disk.
 const BUILT_IN: &str = include_str!("../terminals.toml");
 
-/// The name Squire gives its window, and the only one it ever gives.
+/// A kind of window Squire opens: the HUD today, a map or a journal later.
 ///
-/// This is what a compositor rule matches on. The user writes that rule once,
-/// by hand, so the string is owned here rather than passed in: a caller free
-/// to pass any name is a caller free to break every rule already written.
-pub const APP_ID: &str = "goldbox-squire";
+/// Each kind has one owned window name, which is what a compositor rule
+/// matches on. The user writes one rule per window, by hand, so the names are
+/// owned here rather than passed in as strings: a caller free to pass any name
+/// is a caller free to break every rule already written. The parameter is a
+/// kind rather than a name for exactly that reason.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewKind {
+    Hud,
+}
+
+impl ViewKind {
+    /// Every kind there is. A new view adds one arm here and one name below.
+    pub const ALL: [ViewKind; 1] = [ViewKind::Hud];
+
+    /// The name this view's window reports to the desktop.
+    ///
+    /// Changing one of these breaks every compositor rule already written
+    /// against it, silently, which is why they are pinned by a test.
+    pub fn app_id(self) -> &'static str {
+        match self {
+            ViewKind::Hud => "goldbox-squire-hud",
+        }
+    }
+
+    /// What the user types to ask for this view.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ViewKind::Hud => "hud",
+        }
+    }
+
+    pub fn parse(word: &str) -> Option<ViewKind> {
+        ViewKind::ALL.into_iter().find(|k| k.as_str() == word)
+    }
+}
 
 /// The placeholders an entry may use. Anything else is a typo, and a typo
 /// that reached the command line would be a window nobody can find.
@@ -50,9 +81,15 @@ impl Terminal {
     ///
     /// The command is always last, because at least one terminal refuses to
     /// read anything after it.
-    pub fn command_line(&self, cols: u16, rows: u16, command: &[String]) -> Vec<String> {
+    pub fn command_line(
+        &self,
+        view: ViewKind,
+        cols: u16,
+        rows: u16,
+        command: &[String],
+    ) -> Vec<String> {
         let fill = |arg: &String| {
-            arg.replace("{id}", APP_ID)
+            arg.replace("{id}", view.app_id())
                 .replace("{cols}", &cols.to_string())
                 .replace("{rows}", &rows.to_string())
         };
