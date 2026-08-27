@@ -238,3 +238,15 @@ fn a_repick_carries_the_answer_and_not_the_question() {
         squire_cli::watch::Interrupt::Repick { slot: 'C', names }
     );
 }
+
+#[test]
+fn a_host_that_has_already_gone_closes_the_window_quietly() {
+    // The user quits the game while the slot question is up in this window.
+    // The view is blocked on its own keyboard, misses the end of the socket,
+    // and finds out when it answers. The run is over, so the window closes
+    // without a broken pipe on screen.
+    let (mut mine, theirs) = std::os::unix::net::UnixStream::pair().expect("a pair");
+    drop(theirs);
+
+    assert_eq!(view::tell(&mut mine, &view::quit_message()), Ok(()));
+}

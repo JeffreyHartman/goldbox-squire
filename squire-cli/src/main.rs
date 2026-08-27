@@ -266,7 +266,7 @@ fn run_watch<R: squire_core::mem::Reader>(
     // The windowed path. This process is the host: it keeps the emulator, it
     // is the only process permitted to read it, and it hands the party out
     // over a socket. The HUD is a view in a window of its own (ADR 0005).
-    let socket = host::default_socket_path();
+    let socket = host::default_socket_path(&own_config_dir()?);
     let hello = host::Hello {
         game_id: game.id.clone(),
         game_name: game.name.clone(),
@@ -277,15 +277,20 @@ fn run_watch<R: squire_core::mem::Reader>(
 
     // The window is opened after the socket exists, so that the view never
     // races the host and finds nothing to connect to.
-    let window = open_the_hud(args, config, &socket);
-    match window {
-        Ok(_child) => eprintln!("gbs: the HUD is in its own window. This one is the log."),
-        Err(problem) => eprintln!("gbs: {problem}"),
-    }
+    let mut window = match open_the_hud(args, config, &socket) {
+        Ok(child) => {
+            eprintln!("gbs: the HUD is in its own window. This one is the log.");
+            Some(child)
+        }
+        Err(problem) => {
+            eprintln!("gbs: {problem}");
+            None
+        }
+    };
 
     let mut screen = served.screen();
     let mut keys = served.keys();
-    watch::watch(
+    let outcome = watch::watch(
         session,
         &timing,
         &mut screen,
@@ -293,10 +298,40 @@ fn run_watch<R: squire_core::mem::Reader>(
         running,
         slot,
         names,
-    )
-    // The socket goes with `served`, and every view reading it sees the end of
-    // it and closes. The size the user left the window at is the view's to
-    // remember, because the view is the process that knows it.
+    );
+
+    // The socket goes first, and every view reading it sees the end of it and
+    // closes. Then the window is waited for, so that gbs does not leave a
+    // process behind it never collected. The size the user left the window at
+    // is the view's to remember, because the view is the process that knows
+    // it.
+    drop(screen);
+    drop(keys);
+    drop(served);
+    if let Some(child) = &mut window {
+        close_the_window(child);
+    }
+    outcome
+}
+
+/// Waits for the HUD's window to close, and gives up rather than hanging.
+///
+/// It closes on its own: the socket has gone and the view saw the end of it.
+/// A window that does not is one whose terminal outlived its command, and
+/// waiting for that forever would mean gbs never returning the prompt.
+fn close_the_window(child: &mut std::process::Child) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) | Err(_) => return,
+            Ok(None) => {}
+        }
+        if std::time::Instant::now() >= deadline {
+            eprintln!("gbs: the HUD's window is still open. Close it yourself.");
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
 }
 
 /// Opens the HUD's window, at the size the last run was left at.

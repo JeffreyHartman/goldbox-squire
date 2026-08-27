@@ -39,3 +39,10 @@ a keyboard, so nothing else would notice a drag until the next poll.
 
 A message kind this build does not know is skipped rather than fatal, which is
 what lets the wire grow a message without every view being rebuilt for it.
+
+## Review note
+
+**A drag did not reflow until the next party arrived.** The resize pump ran
+only on the ticks a message had landed, and a window being dragged does not
+make its keyboard readable, so nothing woke the view. It now runs every tick,
+and the tick is a tenth of a second rather than a quarter.

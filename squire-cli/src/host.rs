@@ -82,7 +82,10 @@ struct Inner {
     listener: UnixListener,
     path: PathBuf,
     clients: Vec<Client>,
-    hello: String,
+    /// Kept as the message rather than as its text, because a repick changes
+    /// what it says and a view opened afterwards must be told the slot the
+    /// run is actually watching.
+    hello: Hello,
     /// The last party and the last notice, resent to a view that arrives
     /// late. This is the state, not a transcript: a view opened an hour in
     /// wants what is true now, and replaying an hour of polls would be a
@@ -123,7 +126,7 @@ impl Inner {
                         partial: Vec::new(),
                         unsent: Vec::new(),
                     };
-                    let mut lines = vec![self.hello.clone()];
+                    let mut lines = vec![self.hello.line()];
                     lines.extend(self.last_party.clone());
                     lines.extend(self.last_notice.clone());
                     let welcomed = lines.iter().all(|line| client.send(line));
@@ -233,7 +236,7 @@ impl Host {
                 listener,
                 path: path.to_path_buf(),
                 clients: Vec::new(),
-                hello: hello.line(),
+                hello,
                 last_party: None,
                 last_notice: None,
                 log,
@@ -357,6 +360,13 @@ impl Keys for HostKeys {
                     found = interrupt;
                 }
             }
+            // A repick changes which slot the run is watching, so the hello a
+            // later view is caught up with has to change with it. Nothing
+            // else knows: the loop retargets the session and the views that
+            // are already open were told by the view that asked.
+            if let Some(Interrupt::Repick { slot, .. }) = &found {
+                inner.hello.slot = Some(*slot);
+            }
             drop(inner);
             if let Some(interrupt) = found {
                 return Ok(interrupt);
@@ -368,20 +378,25 @@ impl Keys for HostKeys {
     }
 }
 
-/// Where this run's socket goes: one per run, under the runtime directory.
+/// Where this run's socket goes: one per run, in `base`.
 ///
 /// Per run rather than per user, so that two games at once is not a special
-/// case. The runtime directory is cleared at logout, so a host that was
-/// killed leaves nothing behind for the next one to trip over.
-pub fn socket_path(runtime_dir: Option<&Path>, pid: u32) -> PathBuf {
-    let base = runtime_dir
-        .map(Path::to_path_buf)
-        .unwrap_or_else(std::env::temp_dir);
+/// case.
+pub fn socket_path(base: &Path, pid: u32) -> PathBuf {
     base.join("goldbox-squire").join(format!("{pid}.sock"))
 }
 
-/// This run's socket, from the environment.
-pub fn default_socket_path() -> PathBuf {
-    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
-    socket_path(runtime.as_deref(), std::process::id())
+/// This run's socket.
+///
+/// The runtime directory first, because it is the user's own and it is
+/// cleared at logout, so a host that was killed leaves nothing behind. Where
+/// there is none, gbs's own config folder, which is also the user's own.
+/// Never the temporary directory: it is world-writable, and binding a socket
+/// somewhere another user can create the folder first is not worth the
+/// convenience of one fallback more.
+pub fn default_socket_path(config_dir: &Path) -> PathBuf {
+    let base = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| config_dir.to_path_buf());
+    socket_path(&base, std::process::id())
 }

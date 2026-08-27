@@ -43,7 +43,7 @@ that disconnects is dropped and the run carries on.
       the run
 - [x] Quit and repick sent by a client arrive at the loop as `Interrupt`
 - [x] Every one of the above is tested with no terminal involved
-- [ ] `--plain` creates no socket — moved to 048, which is where `main` first
+- [x] `--plain` creates no socket — moved to 048, which is where `main` first
       builds a host. Building one here would mean a run with a socket, a log
       and no window at all, or a second `Screen` that fans out to both and is
       deleted again one ticket later.
@@ -72,3 +72,24 @@ wants what is true now.
 **Nothing a view sends can end a sitting.** An unparseable line is skipped,
 because a view is another program and 011 forbids the tool taking the game
 down with it.
+
+## Review note
+
+Three findings from the spec review, two fixed and one left.
+
+**The hello did not follow the run.** It was rendered once at start-up, so a
+view opened after a slot repick was captioned with the slot the run began on.
+A window confidently naming the wrong save is worse than one naming none. The
+host now keeps the hello as the message rather than as its text, and the
+repick passing through updates it.
+
+**The socket no longer falls back to the temporary directory.** It is
+world-writable, so another user could create `goldbox-squire/` first and own
+the path gbs binds and unlinks. Where there is no `XDG_RUNTIME_DIR`, gbs's own
+config folder is used, which is the user's.
+
+**Ctrl-C in the log window still leaves the socket file.** Removal is on
+`Drop`, and a signal skips it. Left alone: the path carries the pid so nothing
+collides, `Host::start` unlinks a stale one before binding, and the runtime
+directory is cleared at logout. A signal handler is more machinery than the
+litter is worth.

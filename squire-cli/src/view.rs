@@ -149,13 +149,22 @@ fn draw_and_listen(
 ) -> Result<(), String> {
     let mut line = String::new();
     loop {
-        let (typed, sent) = wait_for_either(lines, Duration::from_millis(250));
+        let (typed, sent) = wait_for_either(lines, Duration::from_millis(100));
+
+        // Every tick, not only the ticks something arrived on. A window being
+        // dragged does not make its keyboard readable, so nothing else here
+        // notices the drag, and a HUD that reflows only when the next party
+        // lands looks like a hang for as long as the poll interval.
+        interface.pump_resizes()?;
 
         if typed {
             // Zero, because the waiting was done above. This reads the event
             // that is already there, and handles a resize as well as a key.
             match keys.wait(Duration::ZERO)? {
-                Interrupt::Quit => return tell(up, &quit_message()),
+                Interrupt::Quit => {
+                    tell(up, &quit_message())?;
+                    return Ok(());
+                }
                 Interrupt::Repick { slot, names } => tell(up, &repick_message(slot, &names))?,
                 // A key that only changes what is drawn. The host has no
                 // business knowing the highlight moved.
@@ -182,7 +191,6 @@ fn draw_and_listen(
             // The next poll sends the party again.
             Err(problem) => screen.notice(&problem),
         }
-        interface.pump_resizes()?;
     }
 }
 
@@ -228,12 +236,32 @@ pub fn repick_message(slot: char, names: &[String]) -> serde_json::Value {
 }
 
 /// Sends one message up to the host.
-fn tell(stream: &mut UnixStream, message: &serde_json::Value) -> Result<(), String> {
-    stream
+///
+/// A host that has gone is not an error. The commonest way to see it is the
+/// user quitting the game while the slot question is up in this window: the
+/// view is blocked on its own keyboard, misses the end of the socket, and
+/// finds out here. The run is over either way, so the window closes quietly
+/// rather than with a broken pipe on screen.
+pub fn tell(stream: &mut UnixStream, message: &serde_json::Value) -> Result<(), String> {
+    let outcome = stream
         .write_all(message.to_string().as_bytes())
         .and_then(|()| stream.write_all(b"\n"))
-        .and_then(|()| stream.flush())
-        .map_err(|e| format!("telling the host: {e}"))
+        .and_then(|()| stream.flush());
+    match outcome {
+        Ok(()) => Ok(()),
+        Err(e) if host_has_gone(&e) => Ok(()),
+        Err(e) => Err(format!("telling the host: {e}")),
+    }
+}
+
+/// Whether this failure means the run ended rather than something broke.
+fn host_has_gone(e: &std::io::Error) -> bool {
+    matches!(
+        e.kind(),
+        std::io::ErrorKind::BrokenPipe
+            | std::io::ErrorKind::ConnectionReset
+            | std::io::ErrorKind::NotConnected
+    )
 }
 
 /// The host's first word, which says which run this window belongs to.

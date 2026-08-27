@@ -46,3 +46,9 @@ view, because the host has no business knowing the highlight moved.
 Two tests send the view's own messages into a real host and check what the
 watch loop is handed, so the two halves of the wire are tested against each
 other rather than against a hand-written string.
+
+**A second finding on the same criterion.** Quitting the game while the slot
+question was up in the view left the view blocked on its own keyboard, so it
+missed the end of the socket and reported a broken pipe on screen when it
+answered. A host that has gone is the run being over, so the window now closes
+quietly.

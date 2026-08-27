@@ -63,3 +63,11 @@ and finds nothing to connect to.
 when nobody says otherwise, and the next run uses whatever the window was
 dragged to. The view is the process that remembers it now, because the view
 is the process that knows it.
+
+## Review note
+
+**The window's terminal was never collected.** Its handle was dropped the
+moment it was spawned, so it sat as a zombie for the length of the run and gbs
+could not have noticed the window die. The host now drops the socket first, so
+every view sees the end of it, then waits up to two seconds for the window and
+says so rather than hanging if it outlives its command.

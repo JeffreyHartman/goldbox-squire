@@ -304,7 +304,7 @@ fn the_socket_is_one_per_run_under_the_runtime_directory() {
     // Per run, not per user, so that two games at once is not a special case.
     // The runtime directory is cleared at logout, so a killed host leaves
     // nothing behind for the next one to trip over.
-    let path = host::socket_path(Some(Path::new("/run/user/1000")), 4321);
+    let path = host::socket_path(Path::new("/run/user/1000"), 4321);
 
     assert_eq!(
         path,
@@ -315,15 +315,17 @@ fn the_socket_is_one_per_run_under_the_runtime_directory() {
 }
 
 #[test]
-fn a_machine_with_no_runtime_directory_still_gets_a_socket() {
-    let path = host::socket_path(None, 4321);
+fn a_machine_with_no_runtime_directory_falls_back_to_a_folder_the_user_owns() {
+    // Never the temporary directory. It is world-writable, so another user
+    // could create the folder first and own the path gbs binds and unlinks.
+    let path = host::default_socket_path(Path::new("/home/someone/.config/gbs"));
 
     assert!(
-        path.ends_with("goldbox-squire/4321.sock"),
+        path.starts_with("/run/") || path.starts_with("/home/someone/.config/gbs"),
         "got {}",
         path.display()
     );
-    assert!(path.is_absolute(), "got {}", path.display());
+    assert!(!path.starts_with("/tmp"), "got {}", path.display());
 }
 
 #[test]
@@ -406,4 +408,34 @@ fn a_view_that_falls_behind_and_comes_back_gets_what_it_missed() {
     assert!(lines[0].contains("hello"), "{lines:?}");
     assert!(lines[1].contains("first"), "{lines:?}");
     assert!(lines[2].contains("second"), "{lines:?}");
+}
+
+#[test]
+fn a_view_opened_after_a_repick_is_told_the_slot_the_run_moved_to() {
+    // The hello is what captions a window. A view opened after the user
+    // changed slots was captioned with the slot the run started on, which is
+    // a window confidently naming the wrong save.
+    let path = scratch("repicked");
+    let mut host = started(&path);
+    let mut first = connect(&mut host, &path);
+    line(&mut first);
+
+    first
+        .get_mut()
+        .write_all(b"{\"kind\":\"repick\",\"slot\":\"D\",\"names\":[\"Brom\"]}\n")
+        .expect("sending a repick");
+    assert_eq!(
+        host.keys()
+            .wait(Duration::from_millis(500))
+            .expect("the pause"),
+        Interrupt::Repick {
+            slot: 'D',
+            names: vec!["Brom".to_string()],
+        }
+    );
+
+    let mut second = connect(&mut host, &path);
+    let hello: serde_json::Value = serde_json::from_str(&line(&mut second)).expect("valid JSON");
+
+    assert_eq!(hello["slot"], "D");
 }
