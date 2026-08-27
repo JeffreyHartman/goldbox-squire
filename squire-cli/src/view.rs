@@ -127,7 +127,6 @@ pub fn run(kind: ViewKind, socket: &Path, remembered: Option<Size>) -> Result<Si
         &mut stream
             .try_clone()
             .map_err(|e| format!("talking to the host: {e}"))?,
-        &interface,
         &mut screen,
         &mut keys,
     );
@@ -143,33 +142,33 @@ pub fn run(kind: ViewKind, socket: &Path, remembered: Option<Size>) -> Result<Si
 fn draw_and_listen(
     lines: &mut BufReader<UnixStream>,
     up: &mut UnixStream,
-    interface: &Hud,
     screen: &mut dyn Screen,
     keys: &mut dyn Keys,
 ) -> Result<(), String> {
     let mut line = String::new();
     loop {
-        let (typed, sent) = wait_for_either(lines, Duration::from_millis(100));
+        // The keyboard is polled only so that a keypress wakes the loop at
+        // once rather than at the end of the slice. Whether it fired is not
+        // acted on, because `keys` is asked on every tick either way: a window
+        // being dragged does not make its keyboard readable, and a HUD that
+        // reflows only when the next party lands looks like a hang.
+        let (_, sent) = wait_for_either(lines, Duration::from_millis(100));
 
-        // Every tick, not only the ticks something arrived on. A window being
-        // dragged does not make its keyboard readable, so nothing else here
-        // notices the drag, and a HUD that reflows only when the next party
-        // lands looks like a hang for as long as the poll interval.
-        interface.pump_resizes()?;
-
-        if typed {
-            // Zero, because the waiting was done above. This reads the event
-            // that is already there, and handles a resize as well as a key.
-            match keys.wait(Duration::ZERO)? {
-                Interrupt::Quit => {
-                    tell(up, &quit_message())?;
-                    return Ok(());
-                }
-                Interrupt::Repick { slot, names } => tell(up, &repick_message(slot, &names))?,
-                // A key that only changes what is drawn. The host has no
-                // business knowing the highlight moved.
-                Interrupt::None => {}
+        // The one and only reader of the terminal's event queue. Anything else
+        // that drained it here would swallow keypresses before `keys` saw
+        // them, and a HUD whose keys do nothing is how that last looked.
+        //
+        // Zero, because the waiting was done above. This takes the event that
+        // is already there, and `keys` handles a resize as well as a key.
+        match keys.wait(Duration::ZERO)? {
+            Interrupt::Quit => {
+                tell(up, &quit_message())?;
+                return Ok(());
             }
+            Interrupt::Repick { slot, names } => tell(up, &repick_message(slot, &names))?,
+            // A key that only changes what is drawn. The host has no business
+            // knowing the highlight moved.
+            Interrupt::None => {}
         }
 
         if !sent {

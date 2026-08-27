@@ -162,21 +162,6 @@ impl Hud {
         }
     }
 
-    /// Redraws if the window changed size since the last frame.
-    ///
-    /// A view spends its time waiting on a socket rather than on a keyboard,
-    /// so nothing else would notice a drag until the next poll, and a window
-    /// that does not reflow while it is being resized looks like a hang.
-    pub fn pump_resizes(&self) -> Result<(), String> {
-        while event::poll(Duration::ZERO).map_err(|e| format!("waiting on the terminal: {e}"))? {
-            let event = event::read().map_err(|e| format!("reading the terminal: {e}"))?;
-            if matches!(event, Event::Resize(..)) {
-                self.inner.borrow_mut().redraw()?;
-            }
-        }
-        Ok(())
-    }
-
     /// The size of the last frame drawn, for the config to remember.
     pub fn size(&self) -> Size {
         self.inner.borrow().size

@@ -212,6 +212,10 @@ Settled in the grilling session of 2026-08-25, before any code.
 
 ## Not yet specified
 
+- **Testing through a real terminal.** Nothing Squire owns has ever pressed a
+  key or dragged a window, and the HUD's keys were dead in the spawned window
+  with every test green. See `issues/050-a-real-terminal-proves-the-keys-work.md`.
+
 - **What the roomy sizes hold.** Map, journal and combat were tabs in the
   spike and are placeholders here. Nothing is designed for data Squire cannot
   yet read.
