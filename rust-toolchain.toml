@@ -1,0 +1,5 @@
+# Pinned so every machine formats the same file the same way. An unpinned
+# rustfmt reflows files nobody touched, which is what commit c98eac9 did.
+[toolchain]
+channel = "1.98.0"
+components = ["rustfmt", "clippy"]

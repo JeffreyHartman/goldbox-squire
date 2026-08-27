@@ -1,7 +1,7 @@
 # 044 — Formatting is a standard the build checks, not a habit
 
 Type: `wayfinder:task` (AFK)
-Status: open
+Status: done
 Triage: `ready-for-agent`
 Blocked by: none
 
@@ -50,11 +50,43 @@ whether the project wants CI at all yet.
 
 ## Acceptance criteria
 
-- [ ] rustfmt's version is pinned so two machines format the same file the same
+- [x] rustfmt's version is pinned so two machines format the same file the same
       way
-- [ ] Something the developer cannot forget rejects or fixes unformatted code
-- [ ] Whatever every clone has to do once is written down where a new clone
+- [x] Something the developer cannot forget rejects or fixes unformatted code
+- [x] Whatever every clone has to do once is written down where a new clone
       will read it
-- [ ] The decision about clippy is made at the same time, either way
-- [ ] The repo is formatted once, in a commit that does nothing else, so the
-      next feature diff is clean
+- [x] The decision about clippy is made at the same time, either way
+- [x] The repo is formatted once, in a commit that does nothing else, so the
+      next feature diff is clean — nothing to format under the pinned rustfmt,
+      except `hello.rs`, which is outside the workspace. See the Answer.
+
+## Answer
+
+Check-only hook, no CI yet.
+
+- `rust-toolchain.toml` pins 1.98.0 with `rustfmt` and `clippy`.
+- `.githooks/pre-commit` runs `cargo fmt --all --check` and stops the commit.
+  It does not rewrite files, because a hook that formats during a commit can
+  sweep in hunks the developer deliberately left unstaged.
+- `git config core.hooksPath .githooks` is the one-time per-clone step, written
+  into `AGENTS.md` under "Setting up a clone".
+- Clippy stays out of the hook. It compiles the crate, and a slow hook gets
+  bypassed with `--no-verify`.
+- No CI. One developer on one box, and the hook covers the failure in
+  `c98eac9`. CI is the thing to add when a second contributor appears.
+
+No repo-wide format commit was needed. Under the pinned rustfmt,
+`cargo fmt --all --check` was already clean across both workspace members.
+
+Three known gaps, recorded rather than hidden.
+
+- A clone that skips `core.hooksPath` has no check at all. That is the price of
+  not running CI yet.
+- `cargo fmt` reads the working tree, not the index, so an unstaged unformatted
+  edit still blocks the commit. Accepted: it fails loud and in the safe
+  direction.
+- `hello.rs` at the repo root is tracked but is not a workspace member, so
+  `cargo fmt --all` never sees it and neither does the hook. It is unformatted
+  today, by one missing trailing newline. It looks like a leftover, so deleting
+  it is probably better than formatting it. That is Jeff's call, not this
+  ticket's.

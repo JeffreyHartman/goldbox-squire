@@ -25,6 +25,26 @@ file. See `docs/agents/triage-labels.md`.
 Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See
 `docs/agents/domain.md`.
 
+## Setting up a clone
+
+Run this once, in every clone:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+That turns on `.githooks/pre-commit`, which rejects a commit whose code is not
+formatted. It never edits your files. Run `cargo fmt --all` yourself and stage
+the result. It reads the working tree rather than the index, so an unformatted
+edit you left unstaged still blocks the commit.
+
+`rust-toolchain.toml` pins the compiler, `rustfmt`, and `clippy`, so two
+machines format the same file the same way. Cargo installs that toolchain on
+its own the first time you build.
+
+`cargo clippy` is deliberately not in the hook. It has to compile the crate,
+and a slow hook is a hook people bypass.
+
 ## How Jeff works
 
 The agent writes the code. Jeff reads it to understand how it works, and asks
