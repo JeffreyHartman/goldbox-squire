@@ -57,8 +57,7 @@ whether the project wants CI at all yet.
       will read it
 - [x] The decision about clippy is made at the same time, either way
 - [x] The repo is formatted once, in a commit that does nothing else, so the
-      next feature diff is clean — nothing to format under the pinned rustfmt,
-      except `hello.rs`, which is outside the workspace. See the Answer.
+      next feature diff is clean — nothing to format under the pinned rustfmt
 
 ## Answer
 
@@ -78,15 +77,14 @@ Check-only hook, no CI yet.
 No repo-wide format commit was needed. Under the pinned rustfmt,
 `cargo fmt --all --check` was already clean across both workspace members.
 
-Three known gaps, recorded rather than hidden.
+Two known gaps, recorded rather than hidden, and one closed.
 
 - A clone that skips `core.hooksPath` has no check at all. That is the price of
   not running CI yet.
 - `cargo fmt` reads the working tree, not the index, so an unstaged unformatted
   edit still blocks the commit. Accepted: it fails loud and in the safe
   direction.
-- `hello.rs` at the repo root is tracked but is not a workspace member, so
-  `cargo fmt --all` never sees it and neither does the hook. It is unformatted
-  today, by one missing trailing newline. It looks like a leftover, so deleting
-  it is probably better than formatting it. That is Jeff's call, not this
-  ticket's.
+- Anything outside the workspace members escapes `cargo fmt --all` and so
+  escapes the hook. The one file in that position, `hello.rs`, was a first
+  build from the start of the project and is now deleted. Nothing at the root
+  is tracked Rust any more, so the gap is closed rather than merely known.
