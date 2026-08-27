@@ -4,6 +4,7 @@
 
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use squire_cli::config::{Config, InstallKind};
 use squire_cli::wizard;
@@ -290,15 +291,23 @@ fn nonsense_input_re_asks_the_question() {
 // --- Unlimited Adventures: the design question ---------------------------------------
 
 /// A FRUA game folder with two designs holding saved parties, chosen.
+///
+/// BASILISK is stamped as the newer save, so the designs list is in a known
+/// order and a test can answer the question by number. Left to chance, the two
+/// writes land microseconds apart and either one can come out newest, which
+/// flips the list and picks the other design.
 fn frua_config(tag: &str) -> (Config, PathBuf) {
     let root = saves_dir(&format!("{tag}-frua"), &[]);
-    for design in ["BASILISK", "TUTORIAL"] {
+    // Newest first, so BASILISK is 1 and TUTORIAL is 2.
+    for (design, age) in [("BASILISK", 60), ("TUTORIAL", 600)] {
         let save = root.join(format!("{design}.DSN/SAVE"));
         std::fs::create_dir_all(&save).unwrap();
         let mut bytes = vec![0u8; 1039];
         bytes[1037] = 1;
         bytes.extend_from_slice(&frua_record("HERO"));
-        std::fs::write(save.join("SAVGAMA.CSV"), bytes).unwrap();
+        let path = save.join("SAVGAMA.CSV");
+        std::fs::write(&path, bytes).unwrap();
+        set_age(&path, age);
     }
     let mut config = Config::default();
     config.installs.insert(
@@ -315,6 +324,18 @@ fn frua_config(tag: &str) -> (Config, PathBuf) {
         "manual:unlimited-adventures".into(),
     );
     (config, root)
+}
+
+/// Stamps a file as last modified `seconds` ago, so a test can fix the order
+/// of anything sorted by modification time.
+fn set_age(path: &Path, seconds: u64) {
+    let when = SystemTime::now() - Duration::from_secs(seconds);
+    std::fs::File::options()
+        .write(true)
+        .open(path)
+        .unwrap()
+        .set_modified(when)
+        .unwrap();
 }
 
 /// One record that passes validation against the Unlimited Adventures table.
