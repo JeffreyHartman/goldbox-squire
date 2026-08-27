@@ -51,11 +51,7 @@ fn run() -> Result<(), String> {
             .socket
             .clone()
             .expect("the parser pairs --view with --socket");
-        let remembered = config.hud.map(|h| Size {
-            cols: h.columns,
-            rows: h.rows,
-        });
-        let size = view::run(kind, Path::new(&socket), remembered)?;
+        let size = view::run(kind, Path::new(&socket), remembered_size(&config))?;
         remember_size(&mut config, size);
         return Ok(());
     }
@@ -321,7 +317,8 @@ fn open_the_hud(
     )
     .ok_or_else(|| {
         format!(
-            "no terminal found to open the HUD in. gbs looked on PATH for {}.              Name yours with --terminal <CMD>, or run gbs --plain.",
+            "no terminal found to open the HUD in. gbs looked on PATH for \
+             {}. Name yours with --terminal <CMD>, or run gbs --plain.",
             list.iter()
                 .map(|t| t.name.as_str())
                 .collect::<Vec<&str>>()
@@ -331,15 +328,20 @@ fn open_the_hud(
 
     let gbs = std::env::current_exe().map_err(|e| format!("finding gbs itself: {e}"))?;
     let command = spawn::view_command(&gbs, ViewKind::Hud, socket);
-    let size = config.hud.map_or(DEFAULT_WINDOW, |h| Size {
-        cols: h.columns,
-        rows: h.rows,
-    });
+    let size = remembered_size(config).unwrap_or(DEFAULT_WINDOW);
     let (argv, problem) = spawn::plan(&list, &program, ViewKind::Hud, size, &command);
     if let Some(problem) = problem {
         eprintln!("gbs: {problem}");
     }
     spawn::open(&argv)
+}
+
+/// The size the last run left the HUD's window at, if there was one.
+fn remembered_size(config: &Config) -> Option<Size> {
+    config.hud.map(|h| Size {
+        cols: h.columns,
+        rows: h.rows,
+    })
 }
 
 /// The window a first run gets, before there is a remembered size.

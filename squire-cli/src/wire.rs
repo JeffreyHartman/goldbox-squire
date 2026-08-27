@@ -138,7 +138,7 @@ fn character_from_value(v: &Value) -> Result<Character, String> {
         hit_points_maximum: number(&v["hit_points"], "maximum")?,
         armor_class: signed(v, "armor_class")?,
         thac0: signed(v, "thac0")?,
-        experience: wide(v, "experience")?,
+        experience: number(v, "experience")?,
         age: number(v, "age")?,
         strength: number(&v["abilities"], "strength")?,
         strength_exceptional: number(&v["abilities"], "strength_exceptional")?,
@@ -175,8 +175,4 @@ fn signed(v: &Value, field: &str) -> Result<i16, String> {
         .as_i64()
         .and_then(|n| i16::try_from(n).ok())
         .ok_or_else(|| format!("`{field}` is missing or out of range"))
-}
-
-fn wide(v: &Value, field: &str) -> Result<u32, String> {
-    number(v, field)
 }

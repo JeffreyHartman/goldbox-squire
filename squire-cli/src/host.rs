@@ -54,15 +54,15 @@ struct Client {
 
 impl Client {
     /// Queues one line, and pushes out as much as the socket will take.
-    ///
-    /// Returns whether the view is still worth keeping.
     fn send(&mut self, line: &str) -> bool {
         self.unsent.extend_from_slice(line.as_bytes());
         self.unsent.push(b'\n');
-        self.flush()
+        self.still_wanted()
     }
 
-    fn flush(&mut self) -> bool {
+    /// Pushes out what the socket will take, and says whether this view is
+    /// still worth holding on to.
+    fn still_wanted(&mut self) -> bool {
         while !self.unsent.is_empty() {
             match self.stream.write(&self.unsent) {
                 Ok(0) => return false,
@@ -106,8 +106,8 @@ impl Inner {
     ///
     /// Called every pause, so a view that stepped aside for the slot question
     /// catches up the moment it comes back rather than at the next poll.
-    fn flush_all(&mut self) {
-        self.clients.retain_mut(Client::flush);
+    fn push_to_all(&mut self) {
+        self.clients.retain_mut(Client::still_wanted);
     }
 
     /// Takes every view waiting to connect, and catches each one up.
@@ -297,7 +297,7 @@ impl Keys for HostKeys {
         loop {
             let left = deadline.saturating_duration_since(Instant::now());
             let mut inner = self.inner.borrow_mut();
-            inner.flush_all();
+            inner.push_to_all();
 
             // The fds are borrowed from `inner`, so they are gathered, polled
             // and dropped before anything is read: the reading needs `inner`
@@ -346,10 +346,10 @@ impl Keys for HostKeys {
                     // Worth a line in the log. A window that closed on its own
                     // is the one thing a user cannot see from the game, and
                     // the run carrying on without it is deliberate.
-                    let left = inner.clients.len();
+                    let open = inner.clients.len();
                     let _ = writeln!(
                         inner.log,
-                        "gbs: a window closed. {left} still open, and the run continues."
+                        "gbs: a window closed. {open} still open, and the run continues."
                     );
                     let _ = inner.log.flush();
                 }

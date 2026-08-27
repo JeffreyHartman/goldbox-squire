@@ -94,11 +94,20 @@ pub fn run(kind: ViewKind, socket: &Path, remembered: Option<Size>) -> Result<Si
         )
     })?;
 
+    // One kind today. The match is here rather than an `if`, so that adding
+    // the map view is a new arm the compiler asks for rather than a branch
+    // somebody has to remember to write.
+    match kind {
+        ViewKind::Hud => {}
+    }
+
     let interface = Hud::start(
         Caption {
             game: hello.game_name.clone(),
             slot: hello.slot,
-            panel: kind.as_str().to_string(),
+            // The panel, not the view kind. A panel is one region inside a
+            // view, and this window's is the party.
+            panel: "party".to_string(),
             note: None,
         },
         remembered,

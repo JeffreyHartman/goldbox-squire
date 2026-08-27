@@ -164,3 +164,15 @@ fn the_terminal_may_be_named_by_a_path() {
     assert_eq!(problem, None);
     assert_eq!(argv[0], "kitty", "{argv:?}");
 }
+
+#[test]
+fn an_empty_terminal_argument_falls_through_rather_than_silently_winning() {
+    // `--terminal ""` is not an answer, and it must not throw away the answer
+    // the environment already gave. A flag that quietly overrides a working
+    // setting with nothing is the hidden trap.
+    let list = terminals::built_in();
+
+    let chosen = spawn::choose(&list, Some(""), Some("foot"), &nothing_installed);
+
+    assert_eq!(chosen.as_deref(), Some("foot"));
+}

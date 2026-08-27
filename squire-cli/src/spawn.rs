@@ -23,10 +23,15 @@ pub fn choose(
     from_env: Option<&str>,
     on_path: &dyn Fn(&str) -> bool,
 ) -> Option<String> {
-    if let Some(named) = asked.or(from_env) {
-        if !named.trim().is_empty() {
-            return Some(named.to_string());
-        }
+    // Each is tried in turn and an empty one is no answer at all, so
+    // `--terminal ""` falls through to TERMINAL rather than silently
+    // throwing it away.
+    let named = [asked, from_env]
+        .into_iter()
+        .flatten()
+        .find(|name| !name.trim().is_empty());
+    if let Some(named) = named {
+        return Some(named.to_string());
     }
     list.iter()
         .map(|t| t.name.clone())
