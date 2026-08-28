@@ -6,8 +6,11 @@ is being built in public, and a working notebook of half-formed tickets is not
 what the issue list is for. This can change later. Until it does, `.scratch/`
 is the tracker.
 
-`.scratch/` is committed. Jeff works from two machines, so the map, the tickets
-and the research have to travel with the code.
+`.scratch/` is gitignored and lives on one machine. It was committed until the
+repo was shared; the tickets are a working notebook, and half-formed thinking is
+not something a visitor should have to read past. Earlier commits still hold it,
+which is fine. An agent reads and writes these files on disk as before, and must
+not expect `git grep` or `git ls-files` to find one.
 
 ## Conventions
 

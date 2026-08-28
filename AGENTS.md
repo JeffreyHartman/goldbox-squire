@@ -12,7 +12,7 @@ anything else that reads `AGENTS.md` all get the same instructions.
 
 ### Issue tracker
 
-Local markdown under `.scratch/<feature>/`, committed. Not GitHub Issues, by
+Local markdown under `.scratch/<feature>/`, gitignored. Not GitHub Issues, by
 choice, for now. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
