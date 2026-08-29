@@ -15,7 +15,7 @@ use ratatui::style::{Color, Modifier, Style};
 use squire_core::session::Party;
 
 use crate::hud::theme;
-use crate::layout::{self, CardLine, Plan};
+use crate::layout::{self, Axis, CardLine, Plan};
 
 /// The whole screen: the header, the cards, the wordmark, the status line.
 ///
@@ -101,7 +101,13 @@ fn cards(area: Rect, buf: &mut Buffer, plan: &Plan, grid: &layout::Grid, party: 
             for column in 0..grid.across {
                 let width = grid.widths[usize::from(column)];
                 set(area, buf, x, y, "│", frame);
-                let who = usize::from(row * grid.across + column);
+                // Horizontal fills a row before starting the next; vertical
+                // fills a column before starting the next. Either way, an
+                // uneven party leaves the last one short, not a middle one.
+                let who = match grid.axis {
+                    Axis::Horizontal => usize::from(row * grid.across + column),
+                    Axis::Vertical => usize::from(column * grid.down + row),
+                };
                 if let (Some(card), Some(c)) = (grid.cards.get(who), party.characters.get(who)) {
                     if let Some(planned) = card.lines.get(usize::from(line)) {
                         let text = layout::line_text(c, planned, width);

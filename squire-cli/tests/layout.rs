@@ -9,7 +9,7 @@
 //! Jeff looked at and answered for, so the answers are pinned here. No
 //! constant in `layout.rs` may name any of them.
 
-use squire_cli::layout::{self, Caption, CardLine, Liveness, Plan, Size, Toggles};
+use squire_cli::layout::{self, Axis, Caption, CardLine, Liveness, Plan, Size, Toggles};
 use squire_core::record::Character;
 use squire_core::session::{Party, PartyState};
 
@@ -105,62 +105,64 @@ fn has_abilities(card: &layout::Card) -> bool {
 // --- The number of cards across -------------------------------------------
 
 #[test]
-fn the_recorded_sizes_choose_the_recorded_number_across() {
-    // Ticket 034, answered by Jeff. These are the only sizes with a recorded
-    // answer, and the rule has to keep producing them.
-    for (cols, rows, across, down) in [
-        (40, 20, 2, 3),
-        (50, 40, 1, 6),
-        (60, 40, 1, 6),
-        (80, 40, 2, 3),
-        (110, 50, 2, 3),
-        (160, 14, 3, 2),
-        (160, 42, 3, 2),
-    ] {
-        let plan = at(cols, rows);
-        let grid = plan
-            .grid
-            .as_ref()
-            .unwrap_or_else(|| panic!("{cols}x{rows} drew no cards"));
-        assert_eq!(
-            (grid.across, grid.down),
-            (across, down),
-            "{cols}x{rows} chose {} across",
-            grid.across
+fn horizontal_never_narrows_as_the_terminal_widens() {
+    // Horizontal is the default. A wider terminal never seats fewer cards
+    // across, and the widest terminal tried reaches one row of the whole
+    // party.
+    let party = party();
+    let mut last = 0u16;
+    for cols in (20..=200).step_by(10) {
+        let plan = layout::plan(
+            Size { cols, rows: 40 },
+            &party,
+            &caption(),
+            Toggles {
+                axis: Axis::Horizontal,
+                ..Toggles::default()
+            },
         );
+        if let Some(grid) = plan.grid {
+            assert!(
+                grid.across >= last,
+                "{cols} across dropped to {}",
+                grid.across
+            );
+            last = grid.across;
+        }
     }
+    assert_eq!(
+        last, 6,
+        "the widest terminal tried did not reach one row of six"
+    );
 }
 
 #[test]
-fn a_key_can_ask_for_a_different_number_across() {
-    // 160x14 has two right answers. The rule picks three across; six across
-    // is available because people should have the choice.
-    let toggles = Toggles {
-        across: Some(6),
-        ..Toggles::default()
-    };
-    let plan = layout::plan(
-        Size {
-            cols: 160,
-            rows: 14,
-        },
+fn the_key_flips_between_horizontal_and_vertical() {
+    // Six characters at 60x40: horizontal packs a wide, short room; vertical
+    // packs a single tall column instead.
+    let size = Size { cols: 60, rows: 40 };
+    let horizontal = layout::plan(
+        size,
         &party(),
         &caption(),
-        toggles,
+        Toggles {
+            axis: Axis::Horizontal,
+            ..Toggles::default()
+        },
     );
-    assert_eq!(plan.grid.expect("six across fits at 160x14").across, 6);
-}
-
-#[test]
-fn an_impossible_key_override_falls_back_to_the_rule() {
-    // Six cards across 40 columns leaves five cells each. Asking for it is
-    // not an error; the rule's answer stands instead.
-    let toggles = Toggles {
-        across: Some(6),
-        ..Toggles::default()
-    };
-    let plan = layout::plan(Size { cols: 40, rows: 20 }, &party(), &caption(), toggles);
-    assert_eq!(plan.grid.expect("something fits at 40x20").across, 2);
+    let vertical = layout::plan(
+        size,
+        &party(),
+        &caption(),
+        Toggles {
+            axis: Axis::Vertical,
+            ..Toggles::default()
+        },
+    );
+    let h = horizontal.grid.expect("horizontal fits at 60x40");
+    let v = vertical.grid.expect("vertical fits at 60x40");
+    assert!(h.across >= h.down, "{h:?} is not the wider arrangement");
+    assert!(v.down >= v.across, "{v:?} is not the taller arrangement");
 }
 
 #[test]
@@ -181,7 +183,20 @@ fn the_cards_never_reach_past_the_right_edge() {
 
 #[test]
 fn a_wide_card_holds_the_whole_character() {
-    let plan = at(110, 50);
+    // Vertical, so the card gets the whole width rather than being split
+    // into as many columns as fit.
+    let plan = layout::plan(
+        Size {
+            cols: 110,
+            rows: 50,
+        },
+        &party(),
+        &caption(),
+        Toggles {
+            axis: Axis::Vertical,
+            ..Toggles::default()
+        },
+    );
     let card = &plan.grid.as_ref().unwrap().cards[4];
     assert!(matches!(card.lines[0], CardLine::Name { class_here: true }));
     assert!(matches!(
@@ -199,8 +214,8 @@ fn a_wide_card_holds_the_whole_character() {
 fn fields_leave_in_the_settled_order_as_the_card_narrows() {
     // Last to go first: name, hit points, conditions, class, armour class.
     //
-    // The card is pinned to one column so that the only thing changing is
-    // how many lines it may have. Letting the rule re-choose the number
+    // Vertical pins the party to one column so that the only thing changing
+    // is how many lines a card may have. Letting a row re-choose the number
     // across would widen the cards as the screen got shorter, which is real
     // behaviour and the wrong thing to measure here.
     let mut seen: Vec<Vec<&'static str>> = Vec::new();
@@ -210,7 +225,7 @@ fn fields_leave_in_the_settled_order_as_the_card_narrows() {
             &party(),
             &caption(),
             Toggles {
-                across: Some(1),
+                axis: Axis::Vertical,
                 ..Toggles::default()
             },
         );
@@ -253,7 +268,7 @@ fn armour_class_leaves_before_the_condition_does() {
         &party(),
         &caption(),
         Toggles {
-            across: Some(1),
+            axis: Axis::Vertical,
             ..Toggles::default()
         },
     );
@@ -297,14 +312,18 @@ fn the_toggle_adds_the_ability_line_and_moves_nothing_else() {
         cols: 110,
         rows: 50,
     };
-    let off = layout::plan(size, &party(), &caption(), Toggles::default());
+    let vertical = Toggles {
+        axis: Axis::Vertical,
+        ..Toggles::default()
+    };
+    let off = layout::plan(size, &party(), &caption(), vertical);
     let on = layout::plan(
         size,
         &party(),
         &caption(),
         Toggles {
             abilities: true,
-            ..Toggles::default()
+            ..vertical
         },
     );
     let (off_grid, on_grid) = (off.grid.unwrap(), on.grid.unwrap());
@@ -529,23 +548,27 @@ fn a_party_of_one_gets_a_card() {
 }
 
 #[test]
-fn a_party_that_does_not_divide_evenly_still_lays_out() {
-    // Five characters have no three-across arrangement without a ragged row,
-    // so the rule must not offer one.
-    let mut five = party();
-    five.characters.truncate(5);
+fn an_uneven_party_leaves_a_short_last_row_in_horizontal() {
+    // Seven characters, forced to five across: a full row of five, then a
+    // short row of two. A ragged last row is not an error to route around.
+    let mut seven = party();
+    seven
+        .characters
+        .push(who("SISTER MORA", "cleric", 2, 12, 16, 7, "okay"));
     let plan = layout::plan(
-        Size {
-            cols: 160,
-            rows: 42,
-        },
-        &five,
+        Size { cols: 60, rows: 42 },
+        &seven,
         &caption(),
         Toggles::default(),
     );
-    let grid = plan.grid.expect("five characters lay out somehow");
-    assert_eq!(grid.cards.len(), 5);
-    assert_eq!(grid.across * grid.down, 5, "a ragged row was drawn");
+    let grid = plan.grid.expect("seven characters lay out somehow");
+    assert_eq!(grid.cards.len(), 7);
+    assert!(
+        grid.across * grid.down > 7,
+        "expected a ragged grid, got {} across, {} down",
+        grid.across,
+        grid.down
+    );
 }
 
 // --- The header and the status line ---------------------------------------

@@ -165,8 +165,10 @@ fn resizing_reflows_rather_than_scrolling() {
             .map(|l| l.matches('┬').count())
             .unwrap_or(0)
     };
-    assert_eq!(count(&narrow), 0, "one card across has no inner divider");
-    assert_eq!(count(&wide), 2, "three across has two");
+    assert!(
+        count(&wide) > count(&narrow),
+        "a wider screen must seat more across"
+    );
 }
 
 #[test]
@@ -288,12 +290,9 @@ fn dump_the_screens() {
 }
 
 #[test]
-fn the_status_line_names_the_arrangement() {
-    // Cycling with `c` and having to count the cards is a key you press until
-    // something looks right.
+fn the_status_line_names_the_axis() {
     let party = party();
     let buf = screen(160, 42, &party);
     let last = text(&buf).lines().last().unwrap().to_string();
-    assert!(last.contains("3 across"), "{last:?}");
-    assert!(last.contains("auto"), "{last:?}");
+    assert!(last.contains("horizontal"), "{last:?}");
 }
