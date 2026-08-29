@@ -7,3 +7,5 @@
 # Working notes and agent config, not for publication.
 /.scratch
 /.claude
+/AGENTS.md
+/CLAUDE.md
