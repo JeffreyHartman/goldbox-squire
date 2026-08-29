@@ -114,36 +114,16 @@ fn a_turns_the_ability_scores_on_and_off_again() {
 }
 
 #[test]
-fn c_steps_through_the_arrangements_and_back_to_the_rule() {
-    // Six characters divide evenly into one, two, three and six across, and
-    // the key walks exactly that list before handing the choice back. What
-    // the rule itself picks depends on the party's own names, so it is read
-    // rather than assumed.
+fn c_flips_between_horizontal_and_vertical_and_back() {
     let mut view = watching();
-    let rule = roomy(&view).grid.unwrap().across;
+    let horizontal = roomy(&view).grid.unwrap().across;
 
-    let mut seen = Vec::new();
-    for _ in 0..5 {
-        press(&mut view, KeyCode::Char('c'));
-        seen.push(roomy(&view).grid.unwrap().across);
-    }
-    assert_eq!(seen, vec![1, 2, 3, 6, rule], "{seen:?}");
-}
+    press(&mut view, KeyCode::Char('c'));
+    let vertical = roomy(&view).grid.unwrap().across;
+    assert_ne!(vertical, horizontal, "vertical drew the same grid");
 
-#[test]
-fn the_key_never_asks_for_an_arrangement_the_rule_would_not_offer() {
-    // Five characters have no three-across arrangement without a ragged row.
-    let mut five = party();
-    five.characters.truncate(5);
-    let mut view = View::new(caption());
-    view.saw(&five);
-
-    let mut seen = Vec::new();
-    for _ in 0..3 {
-        press(&mut view, KeyCode::Char('c'));
-        seen.push(roomy(&view).grid.unwrap().across);
-    }
-    assert_eq!(&seen[..2], &[1, 5], "{seen:?}");
+    press(&mut view, KeyCode::Char('c'));
+    assert_eq!(roomy(&view).grid.unwrap().across, horizontal);
 }
 
 // --- The panels -----------------------------------------------------------
@@ -239,26 +219,25 @@ fn losing_and_recovering_the_anchor_dims_and_undims_the_same_party() {
 }
 
 #[test]
-fn the_status_line_says_which_arrangement_and_who_chose_it() {
+fn the_status_line_says_which_axis_is_active() {
     let mut view = watching();
-    let rule = roomy(&view).grid.unwrap().across;
-    let status = roomy(&view).status;
     assert!(
-        status.contains(&format!("{rule} across, auto")),
-        "{status:?}"
+        roomy(&view).status.contains("horizontal"),
+        "{:?}",
+        roomy(&view).status
     );
 
     press(&mut view, KeyCode::Char('c'));
-    let status = roomy(&view).status;
-    assert!(status.contains("1 across, chosen"), "{status:?}");
-
-    // Round the cycle and back to the rule deciding.
-    for _ in 0..4 {
-        press(&mut view, KeyCode::Char('c'));
-    }
-    let status = roomy(&view).status;
     assert!(
-        status.contains(&format!("{rule} across, auto")),
-        "{status:?}"
+        roomy(&view).status.contains("vertical"),
+        "{:?}",
+        roomy(&view).status
+    );
+
+    press(&mut view, KeyCode::Char('c'));
+    assert!(
+        roomy(&view).status.contains("horizontal"),
+        "{:?}",
+        roomy(&view).status
     );
 }

@@ -14,7 +14,7 @@ use crossterm::event::{KeyCode, KeyModifiers};
 use squire_core::record::Character;
 use squire_core::session::{Party, PartyState};
 
-use crate::layout::{self, Caption, Plan, Size, Toggles};
+use crate::layout::{self, Axis, Caption, Plan, Size, Toggles};
 
 /// The panels the number keys are reserved for. Only the first exists; the
 /// rest are a promise that the second one will not need a menu built for it.
@@ -106,7 +106,7 @@ impl View {
             // accident. `s` for slot, and Enter means nothing.
             KeyCode::Char('s') => return Press::AskForSlot,
             KeyCode::Char('a') => self.toggles.abilities = !self.toggles.abilities,
-            KeyCode::Char('c') => self.cycle_columns(),
+            KeyCode::Char('c') => self.flip_axis(),
             KeyCode::Char(digit @ '1'..='9') => {
                 // Reserved. Only one panel exists, so every other number is a
                 // key that has not grown its screen yet.
@@ -120,19 +120,10 @@ impl View {
         Press::Handled
     }
 
-    /// Steps through the arrangements the party divides into evenly, and then
-    /// back to letting the rule decide.
-    ///
-    /// This is what keeps both of 034's answers for a short wide window: the
-    /// rule picks three across, and this asks for six. The list is the layout
-    /// plan's own, so the key can never ask for an arrangement the rule would
-    /// not have offered.
-    fn cycle_columns(&mut self) {
-        let n = u16::try_from(self.characters.len()).unwrap_or(0);
-        let even = layout::arrangements(n);
-        self.toggles.across = match self.toggles.across {
-            None => even.first().copied(),
-            Some(current) => even.into_iter().find(|across| *across > current),
+    fn flip_axis(&mut self) {
+        self.toggles.axis = match self.toggles.axis {
+            Axis::Horizontal => Axis::Vertical,
+            Axis::Vertical => Axis::Horizontal,
         };
     }
 }

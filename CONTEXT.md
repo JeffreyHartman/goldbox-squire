@@ -121,9 +121,15 @@ a pipe, a script, or a reader that is not a person watching a screen. What the
 HUD replaces for a person, and never replaces for a program.
 
 **Layout plan.** What the HUD shows at a given size: which fields are present,
-and where they sit. A size and a party go in, a plan comes out. The plan is
-computed by rules that answer "does this fit", never by a named mode, so there
-is no wide layout and no tall one to switch between.
+and where they sit. A size, a party, and a layout axis go in, a plan comes
+out. The plan is computed by rules that answer "does this fit"; the axis is
+the one thing those rules take as a preference rather than decide themselves.
+
+**Layout axis.** Which way the party's cards flow: `Horizontal` fills a row
+before starting a new one, `Vertical` fills a column before starting a new
+one. A key flips between the two. Whichever axis is active, the rule still
+packs in as many cards along it as fit, and a party that does not divide
+evenly leaves its last row or column short rather than forcing an even one.
 
 **Drop order.** The order fields leave the layout plan as the size shrinks, and
 return as it grows. One order, settled once, so that a narrow HUD and a wide one

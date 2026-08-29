@@ -6,11 +6,11 @@
 //! shows lives here rather than scattered through drawing code, which is what
 //! makes those decisions testable.
 //!
-//! The rules answer "does this fit". They never name a size, a monitor, or a
-//! layout mode. Every number in this file comes from the party, from the game
-//! data, or from a judgement about legibility that is argued for where it is
-//! written. If a reviewer finds a constant here that came from somebody's
-//! screen, the module is wrong.
+//! The rules answer "does this fit". They never name a size or a monitor.
+//! Every number in this file comes from the party, from the game data, or
+//! from a judgement about legibility that is argued for where it is written.
+//! If a reviewer finds a constant here that came from somebody's screen, the
+//! module is wrong.
 //!
 //! A preference is a different question and arrives as [`Toggles`]. The plan
 //! never decides one, or a preference ends up buried inside a fitting rule
@@ -26,14 +26,21 @@ pub struct Size {
     pub rows: u16,
 }
 
+/// Which way the cards flow: filling a row before starting a new one, or a
+/// column before starting a new one.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Axis {
+    #[default]
+    Horizontal,
+    Vertical,
+}
+
 /// What the user asked for, as opposed to what fits.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Toggles {
     /// The ability scores, which are off until a key turns them on.
     pub abilities: bool,
-    /// A number of cards across, overriding the rule's answer. Ignored when
-    /// it does not fit, because a key that empties the screen is a trap.
-    pub across: Option<u16>,
+    pub axis: Axis,
 }
 
 /// How much of the party the screen is currently telling the truth about.
@@ -94,6 +101,9 @@ pub struct Grid {
     pub card_rows: u16,
     /// One per character, in marching order.
     pub cards: Vec<Card>,
+    /// Which way an uneven last card lands: a short last row, or a short last
+    /// column.
+    pub axis: Axis,
 }
 
 impl Grid {
@@ -160,15 +170,9 @@ const NAME_GAP: u16 = 3;
 /// A space each side of the card's text, inside its frame.
 const CARD_PAD: u16 = 2;
 
-/// The air a card wants around its widest line, beyond the text itself.
-///
-/// This is the one number here that is a judgement rather than a measurement.
-/// Widening it moves a middling width from two columns of cards to one.
-const CARD_AIR: u16 = 4;
-
 /// The keys the HUD answers to, shown on the status line so that they are
 /// visible without reading the source.
-const KEY_HINTS: &str = "q quit · a abilities · c columns · s slot";
+const KEY_HINTS: &str = "q quit · a abilities · c layout · s slot";
 
 /// The rows Squire's name takes when it is drawn large.
 pub const WORDMARK_ROWS: u16 = 5;
@@ -182,7 +186,7 @@ pub fn plan(size: Size, party: &Party, caption: &Caption, toggles: Toggles) -> P
     let liveness = liveness(party);
     let grid = choose(size, party, toggles);
     let wordmark = wordmark_fits(size, grid.as_ref());
-    let left = status_text(caption, party, liveness, grid.as_ref(), toggles);
+    let left = status_text(caption, party, liveness, grid.as_ref());
 
     Plan {
         size,
@@ -239,19 +243,6 @@ fn shape_of(party: &[Character]) -> Shape {
 }
 
 impl Shape {
-    /// The width a card is happiest at: its widest line, the card's own
-    /// padding, and the air around it.
-    ///
-    /// Every part of this comes from the party and from the game's class
-    /// names. None of it comes from anybody's monitor.
-    fn wants(&self) -> u16 {
-        self.name
-            .saturating_add(NAME_GAP)
-            .saturating_add(self.class)
-            .saturating_add(CARD_PAD)
-            .saturating_add(CARD_AIR)
-    }
-
     /// The narrowest card worth drawing: one that can hold a whole hit point
     /// line. A name is truncated with an ellipsis and so sets no floor.
     fn floor(&self) -> u16 {
@@ -259,24 +250,17 @@ impl Shape {
     }
 }
 
-/// The numbers of cards across that a party of `n` divides into evenly.
-///
-/// A ragged last row would make one card differ from its neighbours, which the
-/// party-wide shape rule already forbids. The key that changes the number
-/// across steps through this same list, so it can never ask for an
-/// arrangement the rule would not have offered.
-pub fn arrangements(n: u16) -> Vec<u16> {
-    (1..=n).filter(|across| n % across == 0).collect()
-}
-
 /// How many cards across, how wide, and how tall.
 ///
-/// The rule picks the number across that gets each card closest to the width
-/// it wants. Rows are a hard limit: a screen too short for two rows of cards
-/// gets one row of six, whatever the width says.
+/// `Horizontal` fills a row before starting the next, and packs in as many
+/// cards across as still fit; `Vertical` fills a column before starting the
+/// next, and packs in as many down as still fit. Either way rows are a hard
+/// limit: a screen too short for the cards it would otherwise draw falls back
+/// to fewer down and more across instead.
 ///
-/// There are no named layouts here. A sidecar and a strip are what the ends
-/// of this range look like, not states the code can be in.
+/// A party that does not divide evenly leaves its last row (`Horizontal`) or
+/// its last column (`Vertical`) short. That is not an error to route around;
+/// it is what an uneven party looks like.
 fn choose(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
     let n = u16::try_from(party.characters.len()).ok()?;
     if n == 0 {
@@ -285,10 +269,8 @@ fn choose(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
     let shape = shape_of(&party.characters);
     let body = size.rows.checked_sub(CHROME_ROWS)?;
 
-    let even = arrangements(n);
-
-    let build = |across: u16| -> Option<(u16, Grid)> {
-        let down = n / across;
+    let build = |across: u16| -> Option<Grid> {
+        let down = n.div_ceil(across);
         let text = size
             .cols
             .checked_sub(across + 1)?
@@ -319,33 +301,22 @@ fn choose(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
             })
             .collect();
 
-        Some((
-            text.abs_diff(shape.wants()),
-            Grid {
-                across,
-                down,
-                widths,
-                card_rows,
-                cards,
-            },
-        ))
+        Some(Grid {
+            across,
+            down,
+            widths,
+            card_rows,
+            cards,
+            axis: toggles.axis,
+        })
     };
 
-    // A key that asks for an arrangement that does not fit is not an error.
-    // The rule's answer stands instead, because a key that empties the screen
-    // is worse than a key that appears to do nothing.
-    if let Some(asked) = toggles.across {
-        if even.contains(&asked) {
-            if let Some((_, grid)) = build(asked) {
-                return Some(grid);
-            }
-        }
+    match toggles.axis {
+        // Widest first: the largest `across` that still fits.
+        Axis::Horizontal => (1..=n).rev().find_map(build),
+        // Narrowest first: the smallest `across`, which leaves the most rows.
+        Axis::Vertical => (1..=n).find_map(build),
     }
-
-    even.into_iter()
-        .filter_map(build)
-        .min_by_key(|(miss, _)| *miss)
-        .map(|(_, grid)| grid)
 }
 
 /// One card's lines, in the settled drop order, cut to `budget` lines.
@@ -519,17 +490,11 @@ fn header_text(caption: &Caption) -> String {
 ///
 /// The panel's number goes first because the number keys are what selects it,
 /// and a panel that shows its own key needs no menu built for it.
-///
-/// The arrangement is named here rather than left to be counted off the screen.
-/// There are no named layouts in this program, so the honest name for one is
-/// how many cards are across and whether the rule chose it or a key did. A key
-/// that cycles with no read-out is a key you press until something looks right.
 fn status_text(
     caption: &Caption,
     party: &Party,
     liveness: Liveness,
     grid: Option<&Grid>,
-    toggles: Toggles,
 ) -> String {
     let state = match liveness {
         Liveness::Live => format!("live · {}", party.characters.len()),
@@ -539,14 +504,11 @@ fn status_text(
     };
     let mut text = format!("1 {} · {state}", caption.panel);
     if let Some(grid) = grid {
-        // `chosen` means a key asked for this and `c` will move off it.
-        // `auto` means the rule picked it and a resize may change it.
-        let how = if toggles.across == Some(grid.across) {
-            "chosen"
-        } else {
-            "auto"
+        let axis = match grid.axis {
+            Axis::Horizontal => "horizontal",
+            Axis::Vertical => "vertical",
         };
-        text.push_str(&format!(" · {} across, {how}", grid.across));
+        text.push_str(&format!(" · {axis}"));
     }
     if let Some(note) = &caption.note {
         text.push_str(" · ");
