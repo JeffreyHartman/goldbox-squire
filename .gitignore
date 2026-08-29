@@ -1,8 +1,8 @@
 /target
 
-# Third-party reference material, not ours to publish. See docs/README.md.
-/docs/gbc
-/docs/hackdocs
+# Personal notes and reference material, not for publication. This covers the
+# third-party material under docs/gbc and docs/hackdocs too.
+/docs
 
 # Working notes and agent config, not for publication.
 /.scratch
