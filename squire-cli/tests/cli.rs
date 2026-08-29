@@ -340,19 +340,45 @@ fn the_usage_says_where_the_window_size_is_remembered() {
     // A remembered thing the user cannot find is a hidden behaviour.
     assert!(squire_cli::args::USAGE.contains("[hud]"));
     assert!(squire_cli::args::USAGE.contains("--plain"));
-    // Searched with the line breaks taken out, so that rewrapping a
-    // paragraph is not a failing test.
-    let usage = squire_cli::args::USAGE
-        .split_whitespace()
-        .collect::<Vec<&str>>()
-        .join(" ");
+    let usage = usage_unwrapped();
     for key in [
         "q, Escape or Ctrl-C quits",
-        "up and down",
-        "shows the ability scores",
+        "a shows the ability scores",
         "c changes",
-        "Enter picks",
+        "s picks a different save slot",
+        // 052. The fresh-install paragraph is a third place the key is
+        // named, and the one the README drafts copied it out of.
+        "press s in the HUD",
     ] {
         assert!(usage.contains(key), "{key} is undocumented");
     }
+}
+
+/// `USAGE` with the line breaks taken out, so that rewrapping a paragraph is
+/// not a failing test.
+fn usage_unwrapped() -> String {
+    squire_cli::args::USAGE
+        .split_whitespace()
+        .collect::<Vec<&str>>()
+        .join(" ")
+}
+
+#[test]
+fn the_usage_does_not_name_hud_keys_the_hud_dropped() {
+    // 052. The selector went away in 251d9cd and the usage text did not, so
+    // --help sent readers to keys that do nothing. --help is the only
+    // reference the program ships.
+    let usage = usage_unwrapped();
+    for phrase in ["up and down", "Enter in the HUD", "Enter picks"] {
+        assert!(
+            !usage.contains(phrase),
+            "{phrase} names a key the HUD does not read"
+        );
+    }
+    // Enter is still the printed front end's key, and the two paths have to
+    // stay named apart rather than have Enter replaced everywhere.
+    assert!(
+        usage.contains("Enter under --plain"),
+        "--plain's only key is undocumented"
+    );
 }
