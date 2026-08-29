@@ -1,10 +1,7 @@
 /target
-
-# Personal notes and reference material, not for publication. This covers the
-# third-party material under docs/gbc and docs/hackdocs too.
+/.vscode
+# Personal notes and reference material
 /docs
-
-# Working notes and agent config, not for publication.
 /.scratch
 /.claude
 /AGENTS.md

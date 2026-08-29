@@ -1,14 +1,10 @@
 #!/bin/sh
-# Rejects unformatted code. It does not rewrite your files: a hook that edits
-# the tree mid-commit can sweep in hunks you deliberately left unstaged.
+# Rejects unformatted code. 
 #
 # Enable once per clone:  git config core.hooksPath .githooks
 # Skip for one commit:    git commit --no-verify
-#
-# Caveat worth knowing rather than hiding: cargo fmt reads the working tree,
-# not the index. An unformatted edit you left unstaged still blocks the commit.
-# Files outside the workspace members, such as a stray .rs at the repo root,
-# are not checked at all.
+
+[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
 
 if ! command -v cargo > /dev/null 2>&1; then
 	echo "pre-commit: cargo is not on PATH, so formatting was not checked." >&2
