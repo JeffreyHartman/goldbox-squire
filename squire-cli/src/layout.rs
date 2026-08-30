@@ -166,10 +166,12 @@ pub const LOGO_ROWS: u16 = 5;
 /// drawing one. A logo jammed against the cards is not room to spare.
 const LOGO_AIR: u16 = 2;
 
-/// What is shown at this size, for this party, with these preferences.
+/// Works out what to draw given the terminal's current size, the party as of
+/// the last read, and the current toggles. The result is a [`Plan`] that
+/// [`crate::hud::draw`] can render.
 pub fn plan(size: Size, party: &Party, caption: &Caption, toggles: Toggles) -> Plan {
     let liveness = liveness(party);
-    let grid = choose(size, party, toggles);
+    let grid = fit_grid(size, party, toggles);
     let show_logo = logo_fits(size, grid.as_ref());
     let left = status_text(caption, party, liveness, grid.as_ref());
 
@@ -184,12 +186,6 @@ pub fn plan(size: Size, party: &Party, caption: &Caption, toggles: Toggles) -> P
 }
 
 /// How much of the party the numbers on screen are telling the truth about.
-///
-/// A party state of not-found means the anchor is gone. Whether that is worth
-/// dimming depends on whether anything was ever found: the caller keeps the
-/// last party it saw and hands it back with the current state, so characters
-/// with a not-found state are last known values and characters with none are
-/// a run that has not started yet.
 fn liveness(party: &Party) -> Liveness {
     match party.state {
         PartyState::Live => Liveness::Live,
@@ -205,7 +201,7 @@ fn liveness(party: &Party) -> Liveness {
 ///
 /// Held so that every card in one party is laid out the same way, whatever
 /// the length of one character's name.
-struct Shape {
+struct MaxFieldWidths {
     name: u16,
     class: u16,
     hit_points: u16,
@@ -213,11 +209,11 @@ struct Shape {
     abilities: u16,
 }
 
-fn shape_of(party: &[Character]) -> Shape {
+fn max_field_widths(party: &[Character]) -> MaxFieldWidths {
     let widest = |f: fn(&Character) -> String| -> u16 {
         party.iter().map(|c| width(&f(c))).max().unwrap_or(0)
     };
-    Shape {
+    MaxFieldWidths {
         name: widest(|c| c.name.clone()),
         class: widest(class_text),
         hit_points: widest(hit_points_text),
@@ -226,7 +222,7 @@ fn shape_of(party: &[Character]) -> Shape {
     }
 }
 
-impl Shape {
+impl MaxFieldWidths {
     /// The narrowest card worth drawing: one that can hold a whole hit point
     /// line. A name is truncated with an ellipsis and so sets no floor.
     fn floor(&self) -> u16 {
@@ -234,7 +230,8 @@ impl Shape {
     }
 }
 
-/// How many cards across, how wide, and how tall.
+/// Determines how many cards fit, and how they are arranged, given the
+/// terminal's size and the current party.
 ///
 /// `Horizontal` fills a row before starting the next, and packs in as many
 /// cards across as still fit; `Vertical` fills a column before starting the
@@ -242,15 +239,13 @@ impl Shape {
 /// limit: a screen too short for the cards it would otherwise draw falls back
 /// to fewer down and more across instead.
 ///
-/// A party that does not divide evenly leaves its last row (`Horizontal`) or
-/// its last column (`Vertical`) short. That is not an error to route around;
-/// it is what an uneven party looks like.
-fn choose(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
+/// A party that does not divide evenly leaves its last row or column short.
+fn fit_grid(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
     let n = u16::try_from(party.characters.len()).ok()?;
     if n == 0 {
         return None;
     }
-    let shape = shape_of(&party.characters);
+    let max_field_widths = max_field_widths(&party.characters);
     let body = size.rows.checked_sub(EDGE_ROWS)?;
 
     let build = |across: u16| -> Option<Grid> {
@@ -261,7 +256,7 @@ fn choose(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
             .checked_div(across)?
             .checked_sub(CARD_PAD)?;
         let rows = body.checked_sub(down + 1)?.checked_div(down)?;
-        if text < shape.floor() || rows < CARD_MIN_ROWS {
+        if text < max_field_widths.floor() || rows < CARD_MIN_ROWS {
             return None;
         }
 
@@ -273,7 +268,7 @@ fn choose(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
         let tallest = party
             .characters
             .iter()
-            .map(|c| card_lines(c, text, &shape, toggles, u16::MAX).len())
+            .map(|c| card_lines(c, text, &max_field_widths, toggles, u16::MAX).len())
             .max()
             .unwrap_or(0);
         let card_rows = rows.min(u16::try_from(tallest).unwrap_or(u16::MAX));
@@ -281,7 +276,7 @@ fn choose(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
             .characters
             .iter()
             .map(|c| Card {
-                lines: card_lines(c, text, &shape, toggles, card_rows),
+                lines: card_lines(c, text, &max_field_widths, toggles, card_rows),
             })
             .collect();
 
@@ -303,20 +298,26 @@ fn choose(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
     }
 }
 
-/// One card's lines, in the settled drop order, cut to `budget` lines.
+/// What's important on a card, lower numbers get dropped first when space is tight.
+enum Priority {
+    Abilities = 0,
+    Armor = 1,
+    Class = 2,
+    Condition = 3,
+    HitPoints = 4,
+    Name = 5,
+}
+
+/// One card's lines, cut to `budget`, dropping lowest priority first.
 ///
-/// Last to go first: name, hit points, conditions, class and level, armour
-/// class. Ability scores are not in that order at all; they are a toggle, and
-/// they sit last so that turning them on never costs a condition. Conditions
-/// rank high because a silent `poisoned` is the thing you most want to notice
-/// without looking away from the game.
-///
-/// What differs from a table is that a line which does not fit beside another
-/// simply gets its own.
+/// Order: name, hit points, conditions, class, armor, abilities. Abilities
+/// sit last because they're a toggle, not core info. Conditions outrank
+/// class and armor because a silent `poisoned` is the one thing worth
+/// keeping visible over anything else.
 fn card_lines(
     c: &Character,
     width: u16,
-    shape: &Shape,
+    shape: &MaxFieldWidths,
     toggles: Toggles,
     budget: u16,
 ) -> Vec<CardLine> {
@@ -328,7 +329,7 @@ fn card_lines(
             .name
             .saturating_add(NAME_GAP)
             .saturating_add(shape.class);
-    lines.push((0, CardLine::Name { class_inline }));
+    lines.push((Priority::Name as u8, CardLine::Name { class_inline }));
 
     // The bar takes what the hit point line has left after armour class.
     let room = width.saturating_sub(shape.hit_points + 1);
@@ -339,20 +340,23 @@ fn card_lines(
         room.min(BAR_MAX)
     };
     let bar = if bar < BAR_MIN { 0 } else { bar };
-    lines.push((1, CardLine::HitPoints { bar, armor_inline }));
+    lines.push((
+        Priority::HitPoints as u8,
+        CardLine::HitPoints { bar, armor_inline },
+    ));
 
     for i in 0..conditions(c).len() {
-        lines.push((2, CardLine::Condition(i)));
+        lines.push((Priority::Condition as u8, CardLine::Condition(i)));
     }
     if !class_inline {
-        lines.push((3, CardLine::Class));
+        lines.push((Priority::Class as u8, CardLine::Class));
     }
     if !armor_inline {
-        lines.push((4, CardLine::Armor));
+        lines.push((Priority::Armor as u8, CardLine::Armor));
     }
     // All six or none: one score is not worth a line.
     if toggles.abilities && shape.abilities <= width {
-        lines.push((5, CardLine::Abilities));
+        lines.push((Priority::Abilities as u8, CardLine::Abilities));
     }
 
     // Drop from the bottom of the order, then put what survived back into
@@ -366,12 +370,7 @@ fn card_lines(
 
 // --- The words on a card --------------------------------------------------
 
-/// Everything currently on the character, one item per line.
-///
-/// Squire reads one status byte today, so this list has one item. The card is
-/// shaped for a list because the effects read will fill it later, and when it
-/// does the ability scores are what falls off a crowded card rather than the
-/// thing that is currently killing you.
+/// Every condition currently on the character, one item per line.
 pub fn conditions(c: &Character) -> Vec<String> {
     vec![c
         .status
@@ -398,11 +397,8 @@ fn armor_text(c: &Character) -> String {
     format!("ac {}", c.armor_class)
 }
 
-/// Six numbers in the order every Gold Box screen prints them.
-///
-/// No labels: a player who wants these knows the order, and six abbreviations
-/// cost more of the card than the numbers do. Percentile strength goes in
-/// brackets because it has to survive the slashes.
+/// Six ability numbers in the standard D&D order, with strength's exceptional
+/// score in parentheses when it exists.
 fn abilities_text(c: &Character) -> String {
     let strength = if c.strength_exceptional > 0 {
         format!("{}({})", c.strength, c.strength_exceptional)
@@ -415,7 +411,8 @@ fn abilities_text(c: &Character) -> String {
     )
 }
 
-/// A hit point bar. Full blocks for what is left, light for what is gone.
+/// A hit point bar. Full coloured blocks for what is left, light for what is
+/// gone.
 fn bar_text(c: &Character, width: u16) -> String {
     let width = usize::from(width);
     if width == 0 || c.hit_points_maximum == 0 {
@@ -426,7 +423,7 @@ fn bar_text(c: &Character, width: u16) -> String {
     let mut filled = ((width as f64) * current / top).round() as usize;
     filled = filled.min(width);
     // A living character never draws an empty bar, so that hurt and down
-    // never look the same at a glance.
+    // are visually distinct.
     if c.hit_points_current > 0 {
         filled = filled.max(1);
     }
@@ -473,9 +470,6 @@ fn header_text(caption: &Caption) -> String {
 }
 
 /// What the status line says about the party, before the keys are added.
-///
-/// The panel's number goes first because the number keys are what selects it,
-/// and a panel that shows its own key needs no menu built for it.
 fn status_text(
     caption: &Caption,
     party: &Party,
@@ -525,11 +519,7 @@ pub fn logo() -> Vec<String> {
         .collect()
 }
 
-/// Whether there is room to spare after everything the party needs.
-///
-/// Roomy is a question, not a measurement. What is roomy for a party panel
-/// alone is cramped for the same panel beside a map, and when a map exists
-/// this is where that changes.
+/// Whether there is room to spare for the logo.
 fn logo_fits(size: Size, grid: Option<&Grid>) -> bool {
     let Some(grid) = grid else {
         return false;
