@@ -1,0 +1,12 @@
+#!/bin/sh
+# Runs before every commit. Install with: scripts/install-hooks.sh
+set -e
+
+echo "cargo fmt --check"
+cargo fmt --all -- --check
+
+echo "cargo clippy"
+cargo clippy --all-targets --all-features -- -D warnings
+
+echo "cargo test"
+cargo test --all-targets --all-features
