@@ -300,12 +300,12 @@ fn fit_grid(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
 
 /// What's important on a card, lower numbers get dropped first when space is tight.
 enum Priority {
-    Abilities = 0,
-    Armor = 1,
-    Class = 2,
-    Condition = 3,
-    HitPoints = 4,
-    Name = 5,
+    Name = 0,
+    HitPoints = 1,
+    Condition = 2,
+    Class = 3,
+    Armor = 4,
+    Abilities = 5,
 }
 
 /// One card's lines, cut to `budget`, dropping lowest priority first.
