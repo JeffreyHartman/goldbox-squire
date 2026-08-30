@@ -1,13 +1,10 @@
-//! The layout plan: rows, columns and a party in, what is shown out.
+//! Tests for `layout::plan`: given a terminal size and a party, does it pick
+//! the right rows, columns, and dropped fields? Ticket 036.
 //!
-//! Ticket 036. Every decision this effort made about what a HUD shows is
-//! asserted here, at sizes no real terminal would produce, with no terminal
-//! anywhere in the test. The drop order stops being something an agent
-//! remembers and becomes something the build checks.
+//! These tests run at sizes no real terminal produces, and none of them
+//! opens a terminal.
 //!
-//! The sizes named below come from ticket 034's mockups. They are the sizes
-//! Jeff looked at and answered for, so the answers are pinned here. No
-//! constant in `layout.rs` may name any of them.
+//! The sizes come from ticket 034's mockups.
 
 use squire_cli::layout::{self, Axis, Caption, CardLine, Liveness, Plan, Size, Toggles};
 use squire_core::record::Character;
@@ -198,11 +195,11 @@ fn a_wide_card_holds_the_whole_character() {
         },
     );
     let card = &plan.grid.as_ref().unwrap().cards[4];
-    assert!(matches!(card.lines[0], CardLine::Name { class_here: true }));
+    assert!(matches!(card.lines[0], CardLine::Name { class_inline: true }));
     assert!(matches!(
         card.lines[1],
         CardLine::HitPoints {
-            armor_here: true,
+            armor_inline: true,
             bar
         } if bar > 0
     ));
@@ -369,31 +366,31 @@ fn no_card_ever_shows_one_ability_score() {
     }
 }
 
-// --- The wordmark ---------------------------------------------------------
+// --- The logo -------------------------------------------------------------
 
 #[test]
-fn the_wordmark_appears_only_when_roomy() {
+fn the_logo_appears_only_when_roomy() {
     // Roomy is room to spare after the party, not a size. A tall sidecar has
     // spare rows and gets one; a short wide strip does not.
     for (cols, rows) in [(160, 42), (50, 40), (110, 50)] {
-        assert!(at(cols, rows).wordmark, "{cols}x{rows} lost its wordmark");
+        assert!(at(cols, rows).show_logo, "{cols}x{rows} lost its logo");
     }
     for (cols, rows) in [(40, 20), (160, 14), (39, 60)] {
         assert!(
-            !at(cols, rows).wordmark,
-            "{cols}x{rows} has no room and drew a wordmark"
+            !at(cols, rows).show_logo,
+            "{cols}x{rows} has no room and drew a logo"
         );
     }
 }
 
 #[test]
-fn a_wordmark_never_reaches_past_the_edge() {
-    let block = layout::wordmark();
-    assert_eq!(block.len(), layout::WORDMARK_ROWS as usize);
+fn a_logo_never_reaches_past_the_edge() {
+    let block = layout::logo();
+    assert_eq!(block.len(), layout::LOGO_ROWS as usize);
     let widest = block.iter().map(|l| l.chars().count()).max().unwrap();
     for cols in [40u16, 60, 160, 400] {
         let plan = at(cols, 60);
-        if plan.wordmark {
+        if plan.show_logo {
             assert!(widest <= cols as usize, "{cols} columns cannot hold it");
         }
     }

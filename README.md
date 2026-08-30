@@ -12,6 +12,6 @@ There is already a tool that does this. It is called Gold Box Companion, it is
 very good, and it is Windows only, and it works with vanilla DOSBox 0.74-3 only.
 This project intends to provide that functionality in a Linux native program.
 
-This project is in it's infancy, I reccomend using Gold Box Companion under Wine
+This project is in its infancy, I recommend using Gold Box Companion under Wine
 if you want a full experience.
 

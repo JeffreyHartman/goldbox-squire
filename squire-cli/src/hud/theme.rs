@@ -1,9 +1,5 @@
 //! The Gold Box colour story: a warm gold on near-black, with EGA accents for
-//! the data. The palette is SSI's sixteen-colour one warmed up a little, so it
-//! reads as Gold Box rather than as DOS default.
-//!
-//! Carried over from the spike at `/home/jeff/git/goldbox-squire-temp`, which
-//! got the palette right and the layout wrong.
+//! the data. The palette is SSI's sixteen-colour one warmed up a little
 
 use ratatui::style::Color;
 
@@ -27,10 +23,7 @@ pub const HP_CRITICAL: Color = Color::Rgb(255, 60, 60);
 pub const GOOD: Color = Color::Rgb(0, 170, 0);
 
 /// The colour of a character's hit points, by how many are left.
-///
-/// Three bands rather than a gradient, because a HUD is read from the corner
-/// of the eye and a colour that changes by one shade per point says nothing
-/// from there.
+/// Three bands rather than a gradient
 pub fn hit_points(current: i16, maximum: u8) -> Color {
     if maximum == 0 || current <= 0 {
         return HP_CRITICAL;
@@ -45,7 +38,7 @@ pub fn hit_points(current: i16, maximum: u8) -> Color {
     }
 }
 
-/// The colour of one condition. Anything that is not `okay` is worth noticing.
+/// The colour of one condition. Anything that is not `okay` gets color
 pub fn condition(word: &str) -> Color {
     if word.eq_ignore_ascii_case("okay") {
         GOOD

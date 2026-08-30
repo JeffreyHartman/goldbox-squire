@@ -1,12 +1,10 @@
-//! The HUD: the live party on a screen you glance at, rather than a table
-//! reprinted into your scrollback.
+//! The HUD: the live party, to be floated above, below, or to the side of a 
+//! windows DOSBox
 //!
-//! Two seams of the watch loop meet here. [`crate::watch::Screen`] is where
-//! the party arrives and [`crate::watch::Keys`] is the pause and the ear for
-//! the keyboard, and the HUD is one thing wearing both, because a keypress
-//! changes what is drawn and a redraw has to happen inside the pause. They
-//! share one [`Inner`] through an `Rc<RefCell<_>>` for exactly that reason and
-//! for no other.
+//! Two seams of the watch loop meet here. [`crate::watch::Screen`] is where the
+//! party arrives and [`crate::watch::Keys`] is the pause and the watch for
+//! keyboard input, They share one [`Inner`] through an `Rc<RefCell<_>>` for
+//! exactly that reason and for no other.
 //!
 //! This file owns the terminal and nothing else. What the HUD knows is
 //! [`View`], which has no terminal in it and is where the keyboard contract is
@@ -72,10 +70,7 @@ impl Inner {
 }
 
 /// Puts the terminal back the way it was found.
-///
-/// On `Drop` so that it happens after an error and after a panic alike. A tool
-/// that leaves a terminal in raw mode has broken the shell the user goes back
-/// to, and no error message is worth that.
+/// On `Drop` so that it happens after an error or kernel panic
 impl Drop for Inner {
     fn drop(&mut self) {
         restore();
@@ -90,9 +85,6 @@ fn restore() {
 }
 
 /// The HUD, and the two handles the watch loop takes.
-///
-/// Held by the caller for as long as the watch runs. Dropping it restores the
-/// terminal.
 pub struct Hud {
     inner: Rc<RefCell<Inner>>,
 }

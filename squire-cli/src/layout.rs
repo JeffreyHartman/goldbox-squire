@@ -1,20 +1,15 @@
-//! The layout plan: rows, columns and a party in, what is shown out.
+//! Turns a party of characters and a terminal [`Size`] into a [`Plan`]: what
+//! text goes where, with no terminal I/O.
 //!
-//! A pure function. No terminal, no drawing library, no input, no clock. Call
-//! it with any size at all, including sizes no real terminal would produce,
-//! and it answers instantly. Every decision this effort made about what a HUD
-//! shows lives here rather than scattered through drawing code, which is what
-//! makes those decisions testable.
+//! [`plan()`] is the entry point. It decides three things://!
+//! - how many character cards fit, and how they're arranged (`choose`)
+//! - what goes on each card, and in what order things get dropped when space
+//!   is tight (`card_lines`)
+//! - the header and status line text
 //!
-//! The rules answer "does this fit". They never name a size or a monitor.
-//! Every number in this file comes from the party, from the game data, or
-//! from a judgement about legibility that is argued for where it is written.
-//! If a reviewer finds a constant here that came from somebody's screen, the
-//! module is wrong.
-//!
-//! A preference is a different question and arrives as [`Toggles`]. The plan
-//! never decides one, or a preference ends up buried inside a fitting rule
-//! where nobody can find it.
+//! [`crate::hud::draw`] renders the [`Plan`] and makes no layout decision of
+//! its own. User preferences arrive as [`Toggles`] and are never a fitting
+//! rule.
 
 use squire_core::record::Character;
 use squire_core::session::{Party, PartyState};
@@ -26,8 +21,7 @@ pub struct Size {
     pub rows: u16,
 }
 
-/// Which way the cards flow: filling a row before starting a new one, or a
-/// column before starting a new one.
+/// Which way the cards flow
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Axis {
     #[default]
@@ -57,19 +51,16 @@ pub enum Liveness {
     Waiting,
 }
 
-/// One line of one card, and what is on it.
-///
-/// Presence is the plan's business; the characters are the wire it is drawn
-/// from. [`line_text`] turns one of these into the text for a given width,
-/// and it lives here rather than in the drawing code so that truncation and
-/// alignment are decided once and tested without a terminal.
+/// One row of a Card
+/// 
+/// Some lines can hold more than one field. The `inline` flags say whether the line is wide enough to do that.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CardLine {
-    /// The name, with the class and level pushed right when they fit.
-    Name { class_here: bool },
+    /// The name, 
+    Name { class_inline: bool },
     /// Hit points, a bar this many cells wide (zero for none), and armour
     /// class when the line still has room.
-    HitPoints { bar: u16, armor_here: bool },
+    HitPoints { bar: u16, armor_inline: bool },
     /// One condition, by its position in the character's list.
     Condition(usize),
     /// The class and level, on their own line.
@@ -92,12 +83,12 @@ pub struct Card {
 pub struct Grid {
     pub across: u16,
     pub down: u16,
-    /// The text width inside each column of cards, left to right. The columns
-    /// the division left over go to the leftmost cards, so that the frame
-    /// reaches the right edge exactly.
+    /// The text width inside each column of cards, left to right. One entry per
+    /// column. Integer division leaves a cell or two spare, and those go to the
+    /// leftmost columns so the frame reaches the right edge exactly.
     pub widths: Vec<u16>,
-    /// Lines inside every card. One number for the whole party: a card laid
-    /// out differently from its neighbour reads as a bug.
+    /// Lines inside every card. One number for the whole party, all cards must
+    /// have same layout
     pub card_rows: u16,
     /// One per character, in marching order.
     pub cards: Vec<Card>,
@@ -113,58 +104,52 @@ impl Grid {
     }
 }
 
-/// The words that say which run is on screen.
-///
-/// Not a [`crate::wizard::Sitting`], which is the save folder and the slot the
-/// wizard resolved. This is what the header and the status line say about the
-/// run, and the plan fits both to the width.
+/// Contains the text that goes in the header and status line
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Caption {
     /// The game's display name.
     pub game: String,
     /// The save slot, when one has been picked.
     pub slot: Option<char>,
-    /// The panel on screen. Only one exists; the number keys are reserved.
+    /// The panel on screen.
     pub panel: String,
-    /// The watch loop's latest word, when it had one.
+    /// A message from the watch loop, appended to the status line
     pub note: Option<String>,
 }
 
-/// What is shown at one size.
+/// Everything that goes on screen.
+///
+/// [`crate::hud::draw`] renders this and computes nothing of its own.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Plan {
-    pub size: Size,
-    /// One line, already fitted to the width.
+    /// The top line, cut to the width.
     pub header: String,
-    /// One line, already fitted to the width. At a size where nothing else
-    /// fits, this is the whole screen.
+    /// The bottom line, cut to the width.
     pub status: String,
-    /// `None` when no card fits. The status line still says what is going on.
+    /// `None` when not one card fits. The status line still says what is
+    /// going on.
     pub grid: Option<Grid>,
-    /// Squire's name, drawn large, in the room going spare.
-    pub wordmark: bool,
-    /// The numbers on screen are not live. Drawing dims the party block.
+    /// Draw Squire's name in block letters, if there is room.
+    pub show_logo: bool,
+    /// Grey the party block. True when `liveness` is [`Liveness::Lost`].
     pub dim: bool,
+    /// Picks the status line's colour.
     pub liveness: Liveness,
 }
 
-/// The rows the header and the status line take. Both are always drawn: at a
-/// hostile size the status line is the only thing that can be.
-const CHROME_ROWS: u16 = 2;
+/// The rows the header and the status line take. Always drawn.
+pub(crate) const EDGE_ROWS: u16 = 2;
 
-/// The longest a hit point bar gets. Past this it stops telling you anything
-/// more and starts eating the line.
+/// The longest a hit point bar gets.
 const BAR_MAX: u16 = 12;
 
-/// The shortest a bar can be and still mean anything. Below this it is a
-/// couple of blocks that barely move, so the numbers go alone instead.
+/// The shortest a bar can be.
 const BAR_MIN: u16 = 4;
 
 /// The fewest lines a card is worth drawing at: the name and the hit points.
 const CARD_MIN_ROWS: u16 = 2;
 
-/// The space between the name and the class when they share a line. Less than
-/// this and the two words read as one.
+/// The space between the name and the class when they share a line.
 const NAME_GAP: u16 = 3;
 
 /// A space each side of the card's text, inside its frame.
@@ -175,25 +160,24 @@ const CARD_PAD: u16 = 2;
 const KEY_HINTS: &str = "q quit · a abilities · c layout · s slot";
 
 /// The rows Squire's name takes when it is drawn large.
-pub const WORDMARK_ROWS: u16 = 5;
+pub const LOGO_ROWS: u16 = 5;
 
-/// Rows that must be spare, beyond the wordmark itself, before it is worth
-/// drawing one. A wordmark jammed against the cards is not room to spare.
-const WORDMARK_AIR: u16 = 2;
+/// Rows that must be spare, beyond the logo itself, before it is worth
+/// drawing one. A logo jammed against the cards is not room to spare.
+const LOGO_AIR: u16 = 2;
 
 /// What is shown at this size, for this party, with these preferences.
 pub fn plan(size: Size, party: &Party, caption: &Caption, toggles: Toggles) -> Plan {
     let liveness = liveness(party);
     let grid = choose(size, party, toggles);
-    let wordmark = wordmark_fits(size, grid.as_ref());
+    let show_logo = logo_fits(size, grid.as_ref());
     let left = status_text(caption, party, liveness, grid.as_ref());
 
     Plan {
-        size,
         header: fit(&header_text(caption), size.cols),
         status: two_up(&left, KEY_HINTS, size.cols),
         grid,
-        wordmark,
+        show_logo,
         dim: liveness == Liveness::Lost,
         liveness,
     }
@@ -267,7 +251,7 @@ fn choose(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
         return None;
     }
     let shape = shape_of(&party.characters);
-    let body = size.rows.checked_sub(CHROME_ROWS)?;
+    let body = size.rows.checked_sub(EDGE_ROWS)?;
 
     let build = |across: u16| -> Option<Grid> {
         let down = n.div_ceil(across);
@@ -339,31 +323,31 @@ fn card_lines(
     // Priority, then the line. Lower survives longer.
     let mut lines: Vec<(u8, CardLine)> = Vec::new();
 
-    let class_here = width
+    let class_inline = width
         >= shape
             .name
             .saturating_add(NAME_GAP)
             .saturating_add(shape.class);
-    lines.push((0, CardLine::Name { class_here }));
+    lines.push((0, CardLine::Name { class_inline }));
 
     // The bar takes what the hit point line has left after armour class.
     let room = width.saturating_sub(shape.hit_points + 1);
-    let armor_here = room >= shape.armor.saturating_add(NAME_GAP);
-    let bar = if armor_here {
+    let armor_inline = room >= shape.armor.saturating_add(NAME_GAP);
+    let bar = if armor_inline {
         room.saturating_sub(shape.armor + CARD_PAD).min(BAR_MAX)
     } else {
         room.min(BAR_MAX)
     };
     let bar = if bar < BAR_MIN { 0 } else { bar };
-    lines.push((1, CardLine::HitPoints { bar, armor_here }));
+    lines.push((1, CardLine::HitPoints { bar, armor_inline }));
 
     for i in 0..conditions(c).len() {
         lines.push((2, CardLine::Condition(i)));
     }
-    if !class_here {
+    if !class_inline {
         lines.push((3, CardLine::Class));
     }
-    if !armor_here {
+    if !armor_inline {
         lines.push((4, CardLine::Armor));
     }
     // All six or none: one score is not worth a line.
@@ -452,9 +436,9 @@ fn bar_text(c: &Character, width: u16) -> String {
 /// One planned line as text, exactly `width` cells wide.
 pub fn line_text(c: &Character, line: &CardLine, width: u16) -> String {
     match line {
-        CardLine::Name { class_here: false } => fit(&c.name, width),
-        CardLine::Name { class_here: true } => two_up(&c.name, &class_text(c), width),
-        CardLine::HitPoints { bar, armor_here } => {
+        CardLine::Name { class_inline: false } => fit(&c.name, width),
+        CardLine::Name { class_inline: true } => two_up(&c.name, &class_text(c), width),
+        CardLine::HitPoints { bar, armor_inline } => {
             let hp = hit_points_text(c);
             let drawn = bar_text(c, *bar);
             let left = if drawn.is_empty() {
@@ -462,7 +446,7 @@ pub fn line_text(c: &Character, line: &CardLine, width: u16) -> String {
             } else {
                 format!("{hp} {drawn}")
             };
-            if *armor_here {
+            if *armor_inline {
                 two_up(&left, &armor_text(c), width)
             } else {
                 fit(&left, width)
@@ -517,11 +501,11 @@ fn status_text(
     text
 }
 
-// --- The wordmark ---------------------------------------------------------
+// --- The logo -------------------------------------------------------------
 
 /// Squire's name in block letters, one string per row.
-pub fn wordmark() -> Vec<String> {
-    const FONT: [(char, [&str; WORDMARK_ROWS as usize]); 6] = [
+pub fn logo() -> Vec<String> {
+    const FONT: [(char, [&str; LOGO_ROWS as usize]); 6] = [
         ('S', ["█████", "█    ", "█████", "    █", "█████"]),
         ('Q', ["█████", "█   █", "█ █ █", "█  ██", "█████"]),
         ('U', ["█   █", "█   █", "█   █", "█   █", "█████"]),
@@ -529,7 +513,7 @@ pub fn wordmark() -> Vec<String> {
         ('R', ["█████", "█   █", "█████", "█  █ ", "█   █"]),
         ('E', ["█████", "█    ", "█████", "█    ", "█████"]),
     ];
-    (0..WORDMARK_ROWS as usize)
+    (0..LOGO_ROWS as usize)
         .map(|row| {
             FONT.iter()
                 .map(|(_, glyph)| glyph[row])
@@ -544,17 +528,17 @@ pub fn wordmark() -> Vec<String> {
 /// Roomy is a question, not a measurement. What is roomy for a party panel
 /// alone is cramped for the same panel beside a map, and when a map exists
 /// this is where that changes.
-fn wordmark_fits(size: Size, grid: Option<&Grid>) -> bool {
+fn logo_fits(size: Size, grid: Option<&Grid>) -> bool {
     let Some(grid) = grid else {
         return false;
     };
-    let block = wordmark();
+    let block = logo();
     let widest = block.iter().map(|l| width(l)).max().unwrap_or(0);
     let spare = size
         .rows
-        .saturating_sub(CHROME_ROWS)
+        .saturating_sub(EDGE_ROWS)
         .saturating_sub(grid.rows());
-    widest <= size.cols && spare >= WORDMARK_ROWS + WORDMARK_AIR
+    widest <= size.cols && spare >= LOGO_ROWS + LOGO_AIR
 }
 
 // --- Fitting text ---------------------------------------------------------

@@ -208,7 +208,7 @@ fn a_lost_anchor_greys_the_party_and_keeps_the_numbers() {
     assert!(shown.contains("lost"), "the status line says nothing");
 
     // Nothing in the party block keeps its colour coding: a dimmed red would
-    // still read as an alarm, and none of it is live. The wordmark below is
+    // still read as an alarm, and none of it is live. The logo below is
     // not the party and keeps its gold.
     let area = *buf.area();
     let plan = layout::plan(

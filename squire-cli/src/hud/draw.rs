@@ -17,7 +17,7 @@ use squire_core::session::Party;
 use crate::hud::theme;
 use crate::layout::{self, Axis, CardLine, Plan};
 
-/// The whole screen: the header, the cards, the wordmark, the status line.
+/// The whole screen: the header, the cards, the logo, the status line.
 ///
 /// No character is picked out. A highlight that always sits on somebody makes
 /// that character look like the party leader when it means nothing, and there
@@ -47,14 +47,14 @@ pub fn draw(area: Rect, buf: &mut Buffer, plan: &Plan, party: &Party) {
 
     // The plan was made for the size the terminal last reported, and a resize
     // can land between that question and this draw. So the room is measured
-    // again here rather than trusted, and a wordmark that no longer fits is
+    // again here rather than trusted, and a logo that no longer fits is
     // simply not drawn.
-    if plan.wordmark {
+    if plan.show_logo {
         // The room going spare, and nowhere else. What is left below is where
         // a map or a journal will live, if they ever do.
-        let spare = area.height.saturating_sub(2).saturating_sub(grid.rows());
-        let top = 1 + grid.rows() + spare.saturating_sub(layout::WORDMARK_ROWS) / 2;
-        for (i, line) in layout::wordmark().iter().enumerate() {
+        let spare = area.height.saturating_sub(layout::EDGE_ROWS).saturating_sub(grid.rows());
+        let top = 1 + grid.rows() + spare.saturating_sub(layout::LOGO_ROWS) / 2;
+        for (i, line) in layout::logo().iter().enumerate() {
             let width = u16::try_from(line.chars().count()).unwrap_or(u16::MAX);
             let x = area.width.saturating_sub(width) / 2;
             let y = top + u16::try_from(i).unwrap_or(0);
