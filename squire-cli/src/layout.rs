@@ -52,11 +52,11 @@ pub enum Liveness {
 }
 
 /// One row of a Card
-/// 
+///
 /// Some lines can hold more than one field. The `inline` flags say whether the line is wide enough to do that.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CardLine {
-    /// The name, 
+    /// The name,
     Name { class_inline: bool },
     /// Hit points, a bar this many cells wide (zero for none), and armour
     /// class when the line still has room.
@@ -436,7 +436,9 @@ fn bar_text(c: &Character, width: u16) -> String {
 /// One planned line as text, exactly `width` cells wide.
 pub fn line_text(c: &Character, line: &CardLine, width: u16) -> String {
     match line {
-        CardLine::Name { class_inline: false } => fit(&c.name, width),
+        CardLine::Name {
+            class_inline: false,
+        } => fit(&c.name, width),
         CardLine::Name { class_inline: true } => two_up(&c.name, &class_text(c), width),
         CardLine::HitPoints { bar, armor_inline } => {
             let hp = hit_points_text(c);

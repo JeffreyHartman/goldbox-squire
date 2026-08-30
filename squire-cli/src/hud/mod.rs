@@ -1,4 +1,4 @@
-//! The HUD: the live party, to be floated above, below, or to the side of a 
+//! The HUD: the live party, to be floated above, below, or to the side of a
 //! windows DOSBox
 //!
 //! Two seams of the watch loop meet here. [`crate::watch::Screen`] is where the

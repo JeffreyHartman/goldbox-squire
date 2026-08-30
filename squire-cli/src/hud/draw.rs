@@ -52,7 +52,10 @@ pub fn draw(area: Rect, buf: &mut Buffer, plan: &Plan, party: &Party) {
     if plan.show_logo {
         // The room going spare, and nowhere else. What is left below is where
         // a map or a journal will live, if they ever do.
-        let spare = area.height.saturating_sub(layout::EDGE_ROWS).saturating_sub(grid.rows());
+        let spare = area
+            .height
+            .saturating_sub(layout::EDGE_ROWS)
+            .saturating_sub(grid.rows());
         let top = 1 + grid.rows() + spare.saturating_sub(layout::LOGO_ROWS) / 2;
         for (i, line) in layout::logo().iter().enumerate() {
             let width = u16::try_from(line.chars().count()).unwrap_or(u16::MAX);

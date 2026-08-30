@@ -195,7 +195,10 @@ fn a_wide_card_holds_the_whole_character() {
         },
     );
     let card = &plan.grid.as_ref().unwrap().cards[4];
-    assert!(matches!(card.lines[0], CardLine::Name { class_inline: true }));
+    assert!(matches!(
+        card.lines[0],
+        CardLine::Name { class_inline: true }
+    ));
     assert!(matches!(
         card.lines[1],
         CardLine::HitPoints {
