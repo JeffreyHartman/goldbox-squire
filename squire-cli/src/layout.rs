@@ -298,14 +298,33 @@ fn fit_grid(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
     }
 }
 
-/// What's important on a card, lower numbers get dropped first when space is tight.
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Priority {
-    Name = 0,
-    HitPoints = 1,
-    Condition = 2,
-    Class = 3,
-    Armor = 4,
-    Abilities = 5,
+    Name,
+    HitPoints,
+    Condition,
+    Class,
+    Armor,
+    Abilities,
+}
+
+/// Last one in order drops first when space is tight.
+const DROP_ORDER: [Priority; 6] = [
+    Priority::Name,
+    Priority::HitPoints,
+    Priority::Condition,
+    Priority::Class,
+    Priority::Armor,
+    Priority::Abilities,
+];
+
+impl Priority {
+    fn rank(self) -> usize {
+        DROP_ORDER
+            .iter()
+            .position(|&p| p == self)
+            .expect("every Priority is in DROP_ORDER")
+    }
 }
 
 /// One card's lines, cut to `budget`, dropping lowest priority first.
@@ -322,14 +341,14 @@ fn card_lines(
     budget: u16,
 ) -> Vec<CardLine> {
     // Priority, then the line. Lower survives longer.
-    let mut lines: Vec<(u8, CardLine)> = Vec::new();
+    let mut lines: Vec<(Priority, CardLine)> = Vec::new();
 
     let class_inline = width
         >= shape
             .name
             .saturating_add(NAME_GAP)
             .saturating_add(shape.class);
-    lines.push((Priority::Name as u8, CardLine::Name { class_inline }));
+    lines.push((Priority::Name, CardLine::Name { class_inline }));
 
     // The bar takes what the hit point line has left after armour class.
     let room = width.saturating_sub(shape.hit_points + 1);
@@ -341,28 +360,28 @@ fn card_lines(
     };
     let bar = if bar < BAR_MIN { 0 } else { bar };
     lines.push((
-        Priority::HitPoints as u8,
+        Priority::HitPoints,
         CardLine::HitPoints { bar, armor_inline },
     ));
 
     for i in 0..conditions(c).len() {
-        lines.push((Priority::Condition as u8, CardLine::Condition(i)));
+        lines.push((Priority::Condition, CardLine::Condition(i)));
     }
     if !class_inline {
-        lines.push((Priority::Class as u8, CardLine::Class));
+        lines.push((Priority::Class, CardLine::Class));
     }
     if !armor_inline {
-        lines.push((Priority::Armor as u8, CardLine::Armor));
+        lines.push((Priority::Armor, CardLine::Armor));
     }
     // All six or none: one score is not worth a line.
     if toggles.abilities && shape.abilities <= width {
-        lines.push((Priority::Abilities as u8, CardLine::Abilities));
+        lines.push((Priority::Abilities, CardLine::Abilities));
     }
 
     // Drop from the bottom of the order, then put what survived back into
     // reading order.
     let mut order: Vec<usize> = (0..lines.len()).collect();
-    order.sort_by_key(|&i| lines[i].0);
+    order.sort_by_key(|&i| lines[i].0.rank());
     order.truncate(usize::from(budget));
     order.sort_unstable();
     order.into_iter().map(|i| lines[i].1).collect()
