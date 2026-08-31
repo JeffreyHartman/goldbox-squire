@@ -113,7 +113,7 @@ fn cards(area: Rect, buf: &mut Buffer, plan: &Plan, grid: &layout::Grid, party: 
                 };
                 if let (Some(card), Some(c)) = (grid.cards.get(who), party.characters.get(who)) {
                     if let Some(planned) = card.lines.get(usize::from(line)) {
-                        let text = layout::line_text(c, planned, width);
+                        let text = layout::line_text(c, planned, grid.shape, width);
                         put(area, buf, x + 2, y, &text, line_style(plan, planned, c));
                     }
                 }
@@ -137,10 +137,8 @@ fn line_style(plan: &Plan, line: &CardLine, c: &squire_core::record::Character) 
         Style::default().fg(theme::HINT).add_modifier(Modifier::DIM)
     } else {
         let colour: Color = match line {
-            CardLine::Name { .. } => theme::GOLD,
-            CardLine::HitPoints { .. } => {
-                theme::hit_points(c.hit_points_current, c.hit_points_maximum)
-            }
+            CardLine::Name => theme::GOLD,
+            CardLine::HitPoints => theme::hit_points(c.hit_points_current, c.hit_points_maximum),
             CardLine::Condition(i) => layout::conditions(c)
                 .get(*i)
                 .map_or(theme::TEXT, |w| theme::condition(w)),

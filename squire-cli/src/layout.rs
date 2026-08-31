@@ -1,15 +1,16 @@
-//! Turns a party of characters and a terminal [`Size`] into a [`Plan`]: what
-//! text goes where, with no terminal I/O.
+//! Turns a party and a terminal [`Size`] into a [`Plan`]. This module does no
+//! terminal I/O.
 //!
-//! [`plan()`] is the entry point. It decides three things://!
-//! - how many character cards fit, and how they're arranged (`choose`)
-//! - what goes on each card, and in what order things get dropped when space
-//!   is tight (`card_lines`)
-//! - the header and status line text
+//! [`plan()`] is the entry point. It decides three things:
 //!
-//! [`crate::hud::draw`] renders the [`Plan`] and makes no layout decision of
-//! its own. User preferences arrive as [`Toggles`] and are never a fitting
-//! rule.
+//! - How many cards fit, and how they are arranged ([`fit_grid`])
+//! - What goes on each card, and what leaves first when space runs short
+//!   ([`card_lines`])
+//! - The text of the header and the status line
+//!
+//! [`crate::hud::draw`] draws the answer. It picks colors and cell positions,
+//! and it decides nothing about which fields are present. [`Toggles`] carry
+//! what the user asked for. A toggle is never a fitting rule.
 
 use squire_core::record::Character;
 use squire_core::session::{Party, PartyState};
@@ -21,53 +22,57 @@ pub struct Size {
     pub rows: u16,
 }
 
-/// Which way the cards flow
+/// Which way the cards flow.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Axis {
+    /// Fill a row, then start the next row.
     #[default]
     Horizontal,
+    /// Fill a column, then start the next column.
     Vertical,
 }
 
-/// What the user asked for, as opposed to what fits.
+/// What the user asked for. What fits is decided elsewhere.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Toggles {
-    /// The ability scores, which are off until a key turns them on.
+    /// Show the ability scores. A key turns them on, and they start off.
     pub abilities: bool,
+    /// Which way the cards flow. A key flips it.
     pub axis: Axis,
 }
 
-/// How much of the party the screen is currently telling the truth about.
+/// How much of the party on screen is still true.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Liveness {
     /// Every character was read this poll.
     Live,
-    /// Some were. The game is mid-load, or the party changed.
+    /// Some were read. The game is mid-load, or the party changed.
     Partial,
-    /// None were, and there are numbers on screen from before. They are the
-    /// last known values and they are no longer live.
+    /// None were read. The numbers on screen are the last ones found, and
+    /// they are no longer live.
     Lost,
-    /// None were, and none ever have been. Nothing to dim.
+    /// None were read, and none ever were. There is nothing to dim.
     Waiting,
 }
 
-/// One row of a Card
+/// One line of a card.
 ///
-/// Some lines can hold more than one field. The `inline` flags say whether the line is wide enough to do that.
+/// A variant names a field, not its text. [`line_text`] turns one into the
+/// string that goes on screen, and [`CardShape`] says which fields share a
+/// line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CardLine {
-    /// The name,
-    Name { class_inline: bool },
-    /// Hit points, a bar this many cells wide (zero for none), and armour
-    /// class when the line still has room.
-    HitPoints { bar: u16, armor_inline: bool },
-    /// One condition, by its position in the character's list.
+    /// The character's name, with the class beside it when there is room.
+    Name,
+    /// The hit points, the bar, and the armor class when there is room.
+    HitPoints,
+    /// One condition, by its index into [`conditions`].
     Condition(usize),
-    /// The class and level, on their own line.
+    /// The class and the level, on a line of their own.
     Class,
-    /// Armour class, on its own line.
+    /// The armor class, on a line of its own.
     Armor,
-    /// All six ability scores. Never one of them.
+    /// All six ability scores. A card never shows fewer than six.
     Abilities,
 }
 
@@ -81,17 +86,21 @@ pub struct Card {
 /// Where the cards go.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Grid {
+    /// Cards in a row.
     pub across: u16,
+    /// Cards in a column.
     pub down: u16,
-    /// The text width inside each column of cards, left to right. One entry per
-    /// column. Integer division leaves a cell or two spare, and those go to the
-    /// leftmost columns so the frame reaches the right edge exactly.
+    /// The text width inside each column of cards, left to right. One entry
+    /// per column. Integer division leaves a cell or two spare. The leftmost
+    /// columns take them, so the frame reaches the right edge exactly.
     pub widths: Vec<u16>,
-    /// Lines inside every card. One number for the whole party, all cards must
-    /// have same layout
+    /// Lines inside one card. One number for the whole party, because every
+    /// card gets the same layout.
     pub card_rows: u16,
     /// One per character, in marching order.
     pub cards: Vec<Card>,
+    /// Which fields share a line, and how wide the bar is.
+    pub shape: CardShape,
     /// Which way an uneven last card lands: a short last row, or a short last
     /// column.
     pub axis: Axis,
@@ -104,22 +113,23 @@ impl Grid {
     }
 }
 
-/// Contains the text that goes in the header and status line
+/// The words that say which run is on screen.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Caption {
     /// The game's display name.
     pub game: String,
-    /// The save slot, when one has been picked.
+    /// The save slot, when the wizard picked one.
     pub slot: Option<char>,
     /// The panel on screen.
     pub panel: String,
-    /// A message from the watch loop, appended to the status line
+    /// The watch loop's latest word. It goes at the end of the status line.
     pub note: Option<String>,
 }
 
 /// Everything that goes on screen.
 ///
-/// [`crate::hud::draw`] renders this and computes nothing of its own.
+/// [`crate::hud::draw`] draws this. It decides nothing about which fields are
+/// present.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Plan {
     /// The top line, cut to the width.
@@ -129,11 +139,11 @@ pub struct Plan {
     /// `None` when not one card fits. The status line still says what is
     /// going on.
     pub grid: Option<Grid>,
-    /// Draw Squire's name in block letters, if there is room.
+    /// True when there is room for Squire's name in block letters.
     pub show_logo: bool,
-    /// Grey the party block. True when `liveness` is [`Liveness::Lost`].
+    /// True when `liveness` is [`Liveness::Lost`]. The party block goes gray.
     pub dim: bool,
-    /// Picks the status line's colour.
+    /// Sets the color of the status line.
     pub liveness: Liveness,
 }
 
@@ -155,20 +165,19 @@ const NAME_GAP: u16 = 3;
 /// A space each side of the card's text, inside its frame.
 const CARD_PAD: u16 = 2;
 
-/// The keys the HUD answers to, shown on the status line so that they are
-/// visible without reading the source.
+/// The keys the HUD answers to. The status line shows them, so a user never
+/// reads the source to find one.
 const KEY_HINTS: &str = "q quit · a abilities · c layout · s slot";
 
 /// The rows Squire's name takes when it is drawn large.
 pub const LOGO_ROWS: u16 = 5;
 
-/// Rows that must be spare, beyond the logo itself, before it is worth
-/// drawing one. A logo jammed against the cards is not room to spare.
+/// Spare rows the logo needs beyond its own height. A logo pressed against
+/// the cards is not room to spare.
 const LOGO_AIR: u16 = 2;
 
-/// Works out what to draw given the terminal's current size, the party as of
-/// the last read, and the current toggles. The result is a [`Plan`] that
-/// [`crate::hud::draw`] can render.
+/// Works out what to draw. It takes the size of the terminal, the party from
+/// the last read, and the toggles, and it returns a [`Plan`].
 pub fn plan(size: Size, party: &Party, caption: &Caption, toggles: Toggles) -> Plan {
     let liveness = liveness(party);
     let grid = fit_grid(size, party, toggles);
@@ -185,7 +194,8 @@ pub fn plan(size: Size, party: &Party, caption: &Caption, toggles: Toggles) -> P
     }
 }
 
-/// How much of the party the numbers on screen are telling the truth about.
+/// Splits the session's not-found state in two. A run that never found a
+/// party waits. A run that found one and lost it is lost.
 fn liveness(party: &Party) -> Liveness {
     match party.state {
         PartyState::Live => Liveness::Live,
@@ -197,10 +207,10 @@ fn liveness(party: &Party) -> Liveness {
 
 // --- The grid -------------------------------------------------------------
 
-/// The widest each line gets across the whole party.
+/// The widest each field gets across the whole party.
 ///
-/// Held so that every card in one party is laid out the same way, whatever
-/// the length of one character's name.
+/// Every card uses these widths. A short name never gives its owner a
+/// different layout from the rest of the party.
 struct MaxFieldWidths {
     name: u16,
     class: u16,
@@ -223,21 +233,62 @@ fn max_field_widths(party: &[Character]) -> MaxFieldWidths {
 }
 
 impl MaxFieldWidths {
-    /// The narrowest card worth drawing: one that can hold a whole hit point
-    /// line. A name is truncated with an ellipsis and so sets no floor.
+    /// The narrowest card worth drawing. It holds a whole hit point line.
+    /// A name ends in an ellipsis when it is cut, so a name sets no floor.
     fn floor(&self) -> u16 {
         self.hit_points.max(1)
     }
 }
 
-/// Determines how many cards fit, and how they are arranged, given the
-/// terminal's size and the current party.
+/// Which fields share a line at a given card width, and how wide the hit
+/// point bar is.
 ///
-/// `Horizontal` fills a row before starting the next, and packs in as many
-/// cards across as still fit; `Vertical` fills a column before starting the
-/// next, and packs in as many down as still fit. Either way rows are a hard
-/// limit: a screen too short for the cards it would otherwise draw falls back
-/// to fewer down and more across instead.
+/// Every value comes from the column width and the party-wide
+/// [`MaxFieldWidths`]. No character changes them, so one [`CardShape`] covers
+/// the whole grid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CardShape {
+    /// The class and level fit beside the name.
+    pub class_inline: bool,
+    /// The armor class fits beside the hit points.
+    pub armor_inline: bool,
+    /// Cells for the hit point bar. Zero when there is no room for a bar a
+    /// reader can judge at a glance.
+    pub bar: u16,
+}
+
+impl CardShape {
+    fn new(width: u16, max_widths: &MaxFieldWidths) -> CardShape {
+        let class_inline = width
+            >= max_widths
+                .name
+                .saturating_add(NAME_GAP)
+                .saturating_add(max_widths.class);
+        // The bar takes what the hit point line has left after the armor class.
+        let room = width.saturating_sub(max_widths.hit_points + 1);
+        let armor_inline = room >= max_widths.armor.saturating_add(NAME_GAP);
+        let bar = if armor_inline {
+            room.saturating_sub(max_widths.armor + CARD_PAD)
+                .min(BAR_MAX)
+        } else {
+            room.min(BAR_MAX)
+        };
+        let bar = if bar < BAR_MIN { 0 } else { bar };
+        CardShape {
+            class_inline,
+            armor_inline,
+            bar,
+        }
+    }
+}
+
+/// Decides how many cards fit, and how they are arranged.
+///
+/// `Horizontal` fills a row first and packs in as many cards across as fit.
+/// `Vertical` fills a column first and packs in as many down as fit.
+///
+/// Rows are a hard limit either way. A screen too short for its cards falls
+/// back to fewer down and more across.
 ///
 /// A party that does not divide evenly leaves its last row or column short.
 fn fit_grid(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
@@ -260,15 +311,16 @@ fn fit_grid(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
             return None;
         }
 
-        // Every card in a party is shaped from the narrowest column, so the
-        // odd spare cell a division leaves over is padding and never a field.
+        // Every card is shaped from the narrowest column, so the odd spare
+        // cell a division leaves over is padding and never a field.
         let spare = size.cols - (across + 1) - across * (text + CARD_PAD);
         let widths: Vec<u16> = (0..across).map(|i| text + u16::from(i < spare)).collect();
+        let shape = CardShape::new(text, &max_field_widths);
 
         let tallest = party
             .characters
             .iter()
-            .map(|c| card_lines(c, text, &max_field_widths, toggles, u16::MAX).len())
+            .map(|c| card_lines(c, text, &max_field_widths, shape, toggles, u16::MAX).len())
             .max()
             .unwrap_or(0);
         let card_rows = rows.min(u16::try_from(tallest).unwrap_or(u16::MAX));
@@ -276,7 +328,7 @@ fn fit_grid(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
             .characters
             .iter()
             .map(|c| Card {
-                lines: card_lines(c, text, &max_field_widths, toggles, card_rows),
+                lines: card_lines(c, text, &max_field_widths, shape, toggles, card_rows),
             })
             .collect();
 
@@ -286,18 +338,20 @@ fn fit_grid(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
             widths,
             card_rows,
             cards,
+            shape,
             axis: toggles.axis,
         })
     };
 
     match toggles.axis {
-        // Widest first: the largest `across` that still fits.
+        // Widest first: the largest `across` that fits.
         Axis::Horizontal => (1..=n).rev().find_map(build),
         // Narrowest first: the smallest `across`, which leaves the most rows.
         Axis::Vertical => (1..=n).find_map(build),
     }
 }
 
+/// What a card line is worth keeping when the card runs out of room.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Priority {
     Name,
@@ -308,7 +362,12 @@ enum Priority {
     Abilities,
 }
 
-/// Last one in order drops first when space is tight.
+/// The drop order, first to last. The first entry is the last field to leave
+/// a card, and the last entry is the first to go.
+///
+/// Conditions outrank the class and the armor class, because a silent
+/// `poisoned` is the one thing a player must not miss. The abilities sit at
+/// the end because a key turns them on, so they never cost a condition.
 const DROP_ORDER: [Priority; 6] = [
     Priority::Name,
     Priority::HitPoints,
@@ -319,6 +378,8 @@ const DROP_ORDER: [Priority; 6] = [
 ];
 
 impl Priority {
+    /// The position of this priority in [`DROP_ORDER`]. A lower number
+    /// survives longer.
     fn rank(self) -> usize {
         DROP_ORDER
             .iter()
@@ -327,42 +388,29 @@ impl Priority {
     }
 }
 
-/// One card's lines, cut to `budget`, dropping lowest priority first.
+/// The lines of one card, in reading order, cut to `budget` lines.
 ///
-/// Order: name, hit points, conditions, class, armor, abilities. Abilities
-/// sit last because they're a toggle, not core info. Conditions outrank
-/// class and armor because a silent `poisoned` is the one thing worth
-/// keeping visible over anything else.
+/// [`DROP_ORDER`] decides what leaves when the budget is too small to hold
+/// every line.
 fn card_lines(
     c: &Character,
     width: u16,
-    shape: &MaxFieldWidths,
+    max_widths: &MaxFieldWidths,
+    shape: CardShape,
     toggles: Toggles,
     budget: u16,
 ) -> Vec<CardLine> {
-    // Priority, then the line. Lower survives longer.
+    // The priority, then the line it belongs to.
     let mut lines: Vec<(Priority, CardLine)> = Vec::new();
 
-    let class_inline = width
-        >= shape
-            .name
-            .saturating_add(NAME_GAP)
-            .saturating_add(shape.class);
-    lines.push((Priority::Name, CardLine::Name { class_inline }));
+    let CardShape {
+        class_inline,
+        armor_inline,
+        ..
+    } = shape;
 
-    // The bar takes what the hit point line has left after armour class.
-    let room = width.saturating_sub(shape.hit_points + 1);
-    let armor_inline = room >= shape.armor.saturating_add(NAME_GAP);
-    let bar = if armor_inline {
-        room.saturating_sub(shape.armor + CARD_PAD).min(BAR_MAX)
-    } else {
-        room.min(BAR_MAX)
-    };
-    let bar = if bar < BAR_MIN { 0 } else { bar };
-    lines.push((
-        Priority::HitPoints,
-        CardLine::HitPoints { bar, armor_inline },
-    ));
+    lines.push((Priority::Name, CardLine::Name));
+    lines.push((Priority::HitPoints, CardLine::HitPoints));
 
     for i in 0..conditions(c).len() {
         lines.push((Priority::Condition, CardLine::Condition(i)));
@@ -373,12 +421,12 @@ fn card_lines(
     if !armor_inline {
         lines.push((Priority::Armor, CardLine::Armor));
     }
-    // All six or none: one score is not worth a line.
-    if toggles.abilities && shape.abilities <= width {
+    // All six or none. One score is not worth a line.
+    if toggles.abilities && max_widths.abilities <= width {
         lines.push((Priority::Abilities, CardLine::Abilities));
     }
 
-    // Drop from the bottom of the order, then put what survived back into
+    // Cut from the end of the drop order, then put what is left back into
     // reading order.
     let mut order: Vec<usize> = (0..lines.len()).collect();
     order.sort_by_key(|&i| lines[i].0.rank());
@@ -389,7 +437,7 @@ fn card_lines(
 
 // --- The words on a card --------------------------------------------------
 
-/// Every condition currently on the character, one item per line.
+/// Every condition on the character, one item per line.
 pub fn conditions(c: &Character) -> Vec<String> {
     vec![c
         .status
@@ -416,8 +464,8 @@ fn armor_text(c: &Character) -> String {
     format!("ac {}", c.armor_class)
 }
 
-/// Six ability numbers in the standard D&D order, with strength's exceptional
-/// score in parentheses when it exists.
+/// The six ability scores in the standard D&D order. The exceptional
+/// strength score goes in parentheses when the character has one.
 fn abilities_text(c: &Character) -> String {
     let strength = if c.strength_exceptional > 0 {
         format!("{}({})", c.strength, c.strength_exceptional)
@@ -430,8 +478,8 @@ fn abilities_text(c: &Character) -> String {
     )
 }
 
-/// A hit point bar. Full coloured blocks for what is left, light for what is
-/// gone.
+/// A hit point bar. Full blocks for the hit points that are left, and light
+/// blocks for the ones that are gone.
 fn bar_text(c: &Character, width: u16) -> String {
     let width = usize::from(width);
     if width == 0 || c.hit_points_maximum == 0 {
@@ -441,8 +489,8 @@ fn bar_text(c: &Character, width: u16) -> String {
     let current = f64::from(c.hit_points_current).max(0.0);
     let mut filled = ((width as f64) * current / top).round() as usize;
     filled = filled.min(width);
-    // A living character never draws an empty bar, so that hurt and down
-    // are visually distinct.
+    // A living character always keeps one block, so that hurt and down never
+    // look the same.
     if c.hit_points_current > 0 {
         filled = filled.max(1);
     }
@@ -450,28 +498,34 @@ fn bar_text(c: &Character, width: u16) -> String {
 }
 
 /// One planned line as text, exactly `width` cells wide.
-pub fn line_text(c: &Character, line: &CardLine, width: u16) -> String {
+///
+/// `shape` is the grid's, not the character's. It says which fields share a
+/// line at this width.
+pub fn line_text(c: &Character, line: &CardLine, shape: CardShape, width: u16) -> String {
     match line {
-        CardLine::Name {
-            class_inline: false,
-        } => fit(&c.name, width),
-        CardLine::Name { class_inline: true } => two_up(&c.name, &class_text(c), width),
-        CardLine::HitPoints { bar, armor_inline } => {
+        CardLine::Name => {
+            if shape.class_inline {
+                two_up(&c.name, &class_text(c), width)
+            } else {
+                fit(&c.name, width)
+            }
+        }
+        CardLine::HitPoints => {
             let hp = hit_points_text(c);
-            let drawn = bar_text(c, *bar);
+            let drawn = bar_text(c, shape.bar);
             let left = if drawn.is_empty() {
                 hp
             } else {
                 format!("{hp} {drawn}")
             };
-            if *armor_inline {
+            if shape.armor_inline {
                 two_up(&left, &armor_text(c), width)
             } else {
                 fit(&left, width)
             }
         }
         CardLine::Condition(i) => fit(conditions(c).get(*i).map_or("", |s| s), width),
-        // The own-line form drops the separator: a card narrow enough to need
+        // The own-line form has no separator. A card narrow enough to need
         // this line is narrow enough to want the four cells back.
         CardLine::Class => fit(&format!("{} {}", class_name(c), c.level), width),
         CardLine::Armor => fit(&armor_text(c), width),
@@ -481,6 +535,7 @@ pub fn line_text(c: &Character, line: &CardLine, width: u16) -> String {
 
 // --- The header and the status line ---------------------------------------
 
+/// The top line: the program, the game, and the save slot when one is picked.
 fn header_text(caption: &Caption) -> String {
     match caption.slot {
         Some(letter) => format!("gbs — {} · slot {letter}", caption.game),
@@ -554,15 +609,16 @@ fn logo_fits(size: Size, grid: Option<&Grid>) -> bool {
 
 // --- Fitting text ---------------------------------------------------------
 
+/// The cells `text` takes, one per character.
 fn width(text: &str) -> u16 {
     u16::try_from(text.chars().count()).unwrap_or(u16::MAX)
 }
 
 /// `text`, padded or cut to exactly `width` cells.
 ///
-/// Cut text ends in an ellipsis so that a truncated name is never mistaken
-/// for a short one. Below two cells there is no room to say that, so the text
-/// is simply cut.
+/// Cut text ends in an ellipsis, so a reader never mistakes a cut name for a
+/// short one. Under two cells there is no room for the ellipsis, and the text
+/// is cut without one.
 fn fit(text: &str, width: u16) -> String {
     let width = usize::from(width);
     let len = text.chars().count();
@@ -581,8 +637,8 @@ fn fit(text: &str, width: u16) -> String {
 
 /// `left` and `right` on one line, pushed to opposite ends.
 ///
-/// When they will not both fit, the right one goes: it is always the less
-/// important of the two, and half of each is worse than all of one.
+/// When both do not fit, the right one goes. It is always the less important
+/// of the two, and half of each is worse than all of one.
 fn two_up(left: &str, right: &str, width: u16) -> String {
     let (l, r) = (self::width(left), self::width(right));
     if l.saturating_add(r).saturating_add(1) > width {

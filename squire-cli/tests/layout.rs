@@ -91,7 +91,7 @@ fn card_text(plan: &Plan, party: &Party, card: usize) -> Vec<String> {
     grid.cards[card]
         .lines
         .iter()
-        .map(|line| layout::line_text(&party.characters[card], line, width))
+        .map(|line| layout::line_text(&party.characters[card], line, grid.shape, width))
         .collect()
 }
 
@@ -194,18 +194,16 @@ fn a_wide_card_holds_the_whole_character() {
             ..Toggles::default()
         },
     );
-    let card = &plan.grid.as_ref().unwrap().cards[4];
-    assert!(matches!(
-        card.lines[0],
-        CardLine::Name { class_inline: true }
-    ));
-    assert!(matches!(
-        card.lines[1],
-        CardLine::HitPoints {
-            armor_inline: true,
-            bar
-        } if bar > 0
-    ));
+    let grid = plan.grid.as_ref().unwrap();
+    let card = &grid.cards[4];
+    // At this width the class sits beside the name, and the armor class sits
+    // beside the hit points. The shape is the grid's, so this holds for every
+    // card in the party.
+    assert!(grid.shape.class_inline);
+    assert!(grid.shape.armor_inline);
+    assert!(grid.shape.bar > 0);
+    assert!(matches!(card.lines[0], CardLine::Name));
+    assert!(matches!(card.lines[1], CardLine::HitPoints));
     assert!(matches!(card.lines[2], CardLine::Condition(0)));
     assert_eq!(card.lines.len(), 3, "the toggle is off, so no ability line");
 }
@@ -249,8 +247,8 @@ fn fields_leave_in_the_settled_order_as_the_card_narrows() {
 
 fn kind(line: &CardLine) -> &'static str {
     match line {
-        CardLine::Name { .. } => "name",
-        CardLine::HitPoints { .. } => "hp",
+        CardLine::Name => "name",
+        CardLine::HitPoints => "hp",
         CardLine::Condition(_) => "condition",
         CardLine::Class => "class",
         CardLine::Armor => "armor",
@@ -359,7 +357,12 @@ fn no_card_ever_shows_one_ability_score() {
                 continue;
             }
             let width = grid.widths[i % grid.across as usize];
-            let text = layout::line_text(&party.characters[i], &CardLine::Abilities, width);
+            let text = layout::line_text(
+                &party.characters[i],
+                &CardLine::Abilities,
+                grid.shape,
+                width,
+            );
             assert_eq!(
                 text.trim_end().matches('/').count(),
                 5,
