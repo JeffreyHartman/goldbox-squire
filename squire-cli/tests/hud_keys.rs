@@ -73,6 +73,17 @@ fn roomy(view: &View) -> squire_cli::layout::Plan {
     })
 }
 
+/// Every card's lines, as words, with nothing about colour in them.
+fn text(plan: &squire_cli::layout::Plan) -> Vec<Vec<String>> {
+    plan.grid
+        .as_ref()
+        .expect("a grid was expected at this size")
+        .cards
+        .iter()
+        .map(|card| card.lines.iter().map(|l| l.text.clone()).collect())
+        .collect()
+}
+
 // --- Quitting -------------------------------------------------------------
 
 #[test]
@@ -98,12 +109,12 @@ fn a_key_nobody_bound_does_nothing() {
 
 #[test]
 fn a_turns_the_ability_scores_on_and_off_again() {
-    use squire_cli::layout::CardLine;
+    use squire_cli::layout::Field;
     let has = |view: &View| {
         roomy(view).grid.unwrap().cards[0]
             .lines
             .iter()
-            .any(|l| matches!(l, CardLine::Abilities))
+            .any(|l| l.field == Field::Abilities)
     };
     let mut view = watching();
     assert!(!has(&view), "they start off");
@@ -207,7 +218,24 @@ fn losing_and_recovering_the_anchor_dims_and_undims_the_same_party() {
     });
     let lost = roomy(&view);
     assert!(lost.dim);
-    assert_eq!(lost.grid, live.grid, "the numbers moved while dimmed");
+    // Only the tints change: a dimmed party is the same numbers, greyed, in
+    // the same grid.
+    assert_eq!(text(&lost), text(&live), "the numbers moved while dimmed");
+    let arrangement = |plan: &squire_cli::layout::Plan| {
+        let grid = plan.grid.as_ref().expect("a grid was expected");
+        (
+            grid.across,
+            grid.down,
+            grid.widths.clone(),
+            grid.card_rows,
+            grid.shape,
+        )
+    };
+    assert_eq!(
+        arrangement(&lost),
+        arrangement(&live),
+        "the cards were rearranged while dimmed"
+    );
 
     view.saw(&party());
     let back = roomy(&view);

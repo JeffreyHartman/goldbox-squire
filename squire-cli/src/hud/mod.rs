@@ -58,11 +58,10 @@ impl Inner {
             rows: area.height,
         };
         let plan = self.view.plan(self.size);
-        let party = self.view.party();
         self.terminal
             .draw(|frame| {
                 let area = frame.area();
-                draw::draw(area, frame.buffer_mut(), &plan, &party);
+                draw::draw(area, frame.buffer_mut(), &plan);
             })
             .map_err(|e| format!("drawing the party: {e}"))?;
         Ok(())

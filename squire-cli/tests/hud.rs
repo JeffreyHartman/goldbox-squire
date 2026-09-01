@@ -9,7 +9,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
 use squire_cli::hud::{draw, theme};
-use squire_cli::layout::{self, Caption, Size, Toggles};
+use squire_cli::layout::{self, Caption, Size, Tint, Toggles};
 use squire_core::record::Character;
 use squire_core::session::{Party, PartyState};
 
@@ -77,7 +77,7 @@ fn screen(cols: u16, rows: u16, party: &Party) -> Buffer {
     let area = Rect::new(0, 0, cols, rows);
     let mut buf = Buffer::empty(area);
     let plan = layout::plan(Size { cols, rows }, party, &caption(), Toggles::default());
-    draw::draw(area, &mut buf, &plan, party);
+    draw::draw(area, &mut buf, &plan);
     buf
 }
 
@@ -225,7 +225,7 @@ fn a_lost_anchor_greys_the_party_and_keeps_the_numbers() {
         for x in 0..area.width {
             let fg = buf[(x, y)].style().fg;
             assert!(
-                fg != Some(theme::HP_CRITICAL) && fg != Some(theme::GOLD),
+                fg != Some(theme::color(Tint::Critical)) && fg != Some(theme::GOLD),
                 "a live colour survived at {x},{y}"
             );
         }
@@ -269,11 +269,11 @@ fn a_wounded_character_is_coloured_by_how_wounded() {
         }
     }
     assert!(
-        seen.contains(&Some(theme::HP_FULL)),
+        seen.contains(&Some(theme::color(Tint::Good))),
         "nobody was drawn healthy"
     );
     assert!(
-        seen.contains(&Some(theme::HP_CRITICAL)),
+        seen.contains(&Some(theme::color(Tint::Critical))),
         "DURIN is on four hit points of forty-four"
     );
 }

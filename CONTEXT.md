@@ -120,9 +120,10 @@ word for this idea. Squire does not call it a dock.
 a pipe, a script, or a reader that is not a person watching a screen. What the
 HUD replaces for a person, and never replaces for a program.
 
-**Layout plan.** What the HUD shows at a given size: which fields are present,
-and where they sit. A size, a party, and a layout axis go in, a plan comes
-out. The plan is computed by rules that answer "does this fit"; the axis is
+**Layout plan.** What the HUD shows at a given size: every line's text, already
+fitted, what each line means, and where the lines sit. A size, a party, and a
+layout axis go in, a plan comes out, and what draws it is never given the
+party. The plan is computed by rules that answer "does this fit"; the axis is
 the one thing those rules take as a preference rather than decide themselves.
 
 **Layout axis.** Which way the party's cards flow: `Horizontal` fills a row
@@ -134,6 +135,12 @@ evenly leaves its last row or column short rather than forcing an even one.
 **Drop order.** The order fields leave the layout plan as the size shrinks, and
 return as it grows. One order, settled once, so that a narrow HUD and a wide one
 disagree about how much is shown and never about what matters.
+
+**Tint.** What a line of the layout plan means, named without naming a color:
+a heading, body text, good, wounded, critical, or faint. The plan decides that
+a character on four hit points of forty-four is critical. A view decides what
+critical looks like, so a view drawn in pixels reuses the rule and replaces
+only the palette.
 
 **Roomy.** A size with room to spare after everything the party needs. Roomy is
 a question the rules answer, not a measurement. What is roomy for a party panel

@@ -5,12 +5,13 @@
 //!
 //! - How many cards fit, and how they are arranged ([`fit_grid`])
 //! - What goes on each card, and what leaves first when space runs short
-//!   ([`card_lines`])
+//!   ([`card_fields`] and [`cut`])
 //! - The text of the header and the status line
 //!
-//! [`crate::hud::draw`] draws the answer. It picks colors and cell positions,
-//! and it decides nothing about which fields are present. [`Toggles`] carry
-//! what the user asked for. A toggle is never a fitting rule.
+//! [`crate::hud::draw`] draws the answer. It works out cell positions and
+//! turns each line's [`Tint`] into a color, and it is never given the party.
+//! [`Toggles`] carry what the user asked for. A toggle is never a fitting
+//! rule.
 
 use squire_core::record::Character;
 use squire_core::session::{Party, PartyState};
@@ -55,13 +56,45 @@ pub enum Liveness {
     Waiting,
 }
 
-/// One line of a card.
+impl Liveness {
+    /// What the status line's words mean.
+    pub fn tint(self) -> Tint {
+        match self {
+            Liveness::Live => Tint::Body,
+            Liveness::Partial => Tint::Wounded,
+            Liveness::Lost => Tint::Critical,
+            Liveness::Waiting => Tint::Faint,
+        }
+    }
+}
+
+/// What a line means, for a view to color as it sees fit.
 ///
-/// A variant names a field, not its text. [`line_text`] turns one into the
-/// string that goes on screen, and [`CardShape`] says which fields share a
-/// line.
+/// A tint is never a color. `layout` decides that a character on four hit
+/// points of forty-four is critical; a view decides what critical looks like.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CardLine {
+pub enum Tint {
+    /// The character's name.
+    Heading,
+    /// Text that carries no alarm of its own.
+    Body,
+    /// Nothing to worry about.
+    Good,
+    /// Worth a look.
+    Wounded,
+    /// Worth looking away from the game for.
+    Critical,
+    /// Not live. Nothing here is worth reading as an alarm.
+    Faint,
+}
+
+/// What one line of a card is about.
+///
+/// A variant names a field, not its text. [`DROP_ORDER`] ranks the same list
+/// by what survives a narrowing card, and [`CardShape`] says which fields
+/// share a line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Field {
     /// The character's name, with the class beside it when there is room.
     Name,
     /// The hit points, the bar, and the armor class when there is room.
@@ -76,11 +109,23 @@ pub enum CardLine {
     Abilities,
 }
 
+/// One finished line of a card.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Line {
+    /// Exactly as wide as the card's column, padded or cut to it.
+    pub text: String,
+    /// What the line means. A view turns this into a color.
+    pub tint: Tint,
+    /// Which field the text came from, so that a caller can name a line
+    /// without matching on its wording.
+    pub field: Field,
+}
+
 /// One character's card.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Card {
     /// Top to bottom, already cut to the card's height.
-    pub lines: Vec<CardLine>,
+    pub lines: Vec<Line>,
 }
 
 /// Where the cards go.
@@ -111,6 +156,26 @@ impl Grid {
     pub fn rows(&self) -> u16 {
         self.down * (self.card_rows + 1) + 1
     }
+
+    /// The character whose card sits at `row`, `column`.
+    ///
+    /// The inverse of [`column_of`], which is why the two live together.
+    pub fn who_at(&self, row: u16, column: u16) -> usize {
+        match self.axis {
+            Axis::Horizontal => usize::from(row * self.across + column),
+            Axis::Vertical => usize::from(column * self.down + row),
+        }
+    }
+}
+
+/// Which column the card for `who` lands in. `Horizontal` fills a row before
+/// starting the next, so the column cycles; `Vertical` fills a column before
+/// starting the next, so it steps once every `down` cards.
+fn column_of(who: usize, across: u16, down: u16, axis: Axis) -> usize {
+    match axis {
+        Axis::Horizontal => who % usize::from(across),
+        Axis::Vertical => who / usize::from(down),
+    }
 }
 
 /// The words that say which run is on screen.
@@ -126,10 +191,12 @@ pub struct Caption {
     pub note: Option<String>,
 }
 
-/// Everything that goes on screen.
+/// Everything that goes on screen: every line's text, already fitted, and
+/// what each one means.
 ///
-/// [`crate::hud::draw`] draws this. It decides nothing about which fields are
-/// present.
+/// [`crate::hud::draw`] puts these strings into cells in the colors they ask
+/// for. It is not given the party, so it cannot decide anything about
+/// content.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Plan {
     /// The top line, cut to the width.
@@ -180,7 +247,9 @@ const LOGO_AIR: u16 = 2;
 /// the last read, and the toggles, and it returns a [`Plan`].
 pub fn plan(size: Size, party: &Party, caption: &Caption, toggles: Toggles) -> Plan {
     let liveness = liveness(party);
-    let grid = fit_grid(size, party, toggles);
+    let dim = liveness == Liveness::Lost;
+    let grid =
+        fit_grid(size, party, toggles).map(|fit| fit.grid(&party.characters, toggles.axis, dim));
     let show_logo = logo_fits(size, grid.as_ref());
     let left = status_text(caption, party, liveness, grid.as_ref());
 
@@ -189,7 +258,7 @@ pub fn plan(size: Size, party: &Party, caption: &Caption, toggles: Toggles) -> P
         status: two_up(&left, KEY_HINTS, size.cols),
         grid,
         show_logo,
-        dim: liveness == Liveness::Lost,
+        dim,
         liveness,
     }
 }
@@ -282,6 +351,56 @@ impl CardShape {
     }
 }
 
+/// A grid that fits, before its cards carry any text.
+///
+/// The text waits until one of these wins, because [`fit_grid`] tries several
+/// values of `across` and throws most of them away.
+struct Fit {
+    across: u16,
+    down: u16,
+    widths: Vec<u16>,
+    card_rows: u16,
+    shape: CardShape,
+    /// One per character, in marching order.
+    fields: Vec<Vec<Field>>,
+}
+
+impl Fit {
+    /// Fits every line's text to the width of the column its card lands in,
+    /// and gives each one its meaning.
+    fn grid(self, party: &[Character], axis: Axis, dim: bool) -> Grid {
+        let cards = self
+            .fields
+            .iter()
+            .zip(party)
+            .enumerate()
+            .map(|(who, (fields, c))| {
+                // The leftmost columns are the ones that took the spare cell.
+                let width = self.widths[column_of(who, self.across, self.down, axis)];
+                Card {
+                    lines: fields
+                        .iter()
+                        .map(|&field| Line {
+                            text: line_text(c, field, self.shape, width),
+                            tint: if dim { Tint::Faint } else { tint(c, field) },
+                            field,
+                        })
+                        .collect(),
+                }
+            })
+            .collect();
+        Grid {
+            across: self.across,
+            down: self.down,
+            widths: self.widths,
+            card_rows: self.card_rows,
+            cards,
+            shape: self.shape,
+            axis,
+        }
+    }
+}
+
 /// Decides how many cards fit, and how they are arranged.
 ///
 /// `Horizontal` fills a row first and packs in as many cards across as fit.
@@ -291,7 +410,7 @@ impl CardShape {
 /// back to fewer down and more across.
 ///
 /// A party that does not divide evenly leaves its last row or column short.
-fn fit_grid(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
+fn fit_grid(size: Size, party: &Party, toggles: Toggles) -> Option<Fit> {
     let n = u16::try_from(party.characters.len()).ok()?;
     if n == 0 {
         return None;
@@ -299,7 +418,7 @@ fn fit_grid(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
     let max_field_widths = max_field_widths(&party.characters);
     let body = size.rows.checked_sub(EDGE_ROWS)?;
 
-    let build = |across: u16| -> Option<Grid> {
+    let build = |across: u16| -> Option<Fit> {
         let down = n.div_ceil(across);
         let text = size
             .cols
@@ -317,29 +436,22 @@ fn fit_grid(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
         let widths: Vec<u16> = (0..across).map(|i| text + u16::from(i < spare)).collect();
         let shape = CardShape::new(text, &max_field_widths);
 
-        let tallest = party
+        let wanted: Vec<Vec<Field>> = party
             .characters
             .iter()
-            .map(|c| card_lines(c, text, &max_field_widths, shape, toggles, u16::MAX).len())
-            .max()
-            .unwrap_or(0);
-        let card_rows = rows.min(u16::try_from(tallest).unwrap_or(u16::MAX));
-        let cards = party
-            .characters
-            .iter()
-            .map(|c| Card {
-                lines: card_lines(c, text, &max_field_widths, shape, toggles, card_rows),
-            })
+            .map(|c| card_fields(c, text, &max_field_widths, shape, toggles))
             .collect();
+        let tallest = wanted.iter().map(Vec::len).max().unwrap_or(0);
+        let card_rows = rows.min(u16::try_from(tallest).unwrap_or(u16::MAX));
+        let fields = wanted.into_iter().map(|f| cut(f, card_rows)).collect();
 
-        Some(Grid {
+        Some(Fit {
             across,
             down,
             widths,
             card_rows,
-            cards,
             shape,
-            axis: toggles.axis,
+            fields,
         })
     };
 
@@ -351,57 +463,45 @@ fn fit_grid(size: Size, party: &Party, toggles: Toggles) -> Option<Grid> {
     }
 }
 
-/// What a card line is worth keeping when the card runs out of room.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Priority {
-    Name,
-    HitPoints,
-    Condition,
-    Class,
-    Armor,
-    Abilities,
-}
-
 /// The drop order, first to last. The first entry is the last field to leave
 /// a card, and the last entry is the first to go.
 ///
 /// Conditions outrank the class and the armor class, because a silent
 /// `poisoned` is the one thing a player must not miss. The abilities sit at
 /// the end because a key turns them on, so they never cost a condition.
-const DROP_ORDER: [Priority; 6] = [
-    Priority::Name,
-    Priority::HitPoints,
-    Priority::Condition,
-    Priority::Class,
-    Priority::Armor,
-    Priority::Abilities,
+const DROP_ORDER: [Field; 6] = [
+    Field::Name,
+    Field::HitPoints,
+    Field::Condition(0),
+    Field::Class,
+    Field::Armor,
+    Field::Abilities,
 ];
 
-impl Priority {
-    /// The position of this priority in [`DROP_ORDER`]. A lower number
-    /// survives longer.
+impl Field {
+    /// The position of this field in [`DROP_ORDER`]. A lower number survives
+    /// longer.
+    ///
+    /// Compared by discriminant, so that every `Condition` shares the one
+    /// rank the array holds whatever index it carries.
     fn rank(self) -> usize {
+        let want = std::mem::discriminant(&self);
         DROP_ORDER
             .iter()
-            .position(|&p| p == self)
-            .expect("every Priority is in DROP_ORDER")
+            .position(|f| std::mem::discriminant(f) == want)
+            .expect("every Field is in DROP_ORDER")
     }
 }
 
-/// The lines of one card, in reading order, cut to `budget` lines.
-///
-/// [`DROP_ORDER`] decides what leaves when the budget is too small to hold
-/// every line.
-fn card_lines(
+/// The fields one card wants, in reading order, before any budget applies.
+fn card_fields(
     c: &Character,
     width: u16,
     max_widths: &MaxFieldWidths,
     shape: CardShape,
     toggles: Toggles,
-    budget: u16,
-) -> Vec<CardLine> {
-    // The priority, then the line it belongs to.
-    let mut lines: Vec<(Priority, CardLine)> = Vec::new();
+) -> Vec<Field> {
+    let mut fields = vec![Field::Name, Field::HitPoints];
 
     let CardShape {
         class_inline,
@@ -409,36 +509,65 @@ fn card_lines(
         ..
     } = shape;
 
-    lines.push((Priority::Name, CardLine::Name));
-    lines.push((Priority::HitPoints, CardLine::HitPoints));
-
     for i in 0..conditions(c).len() {
-        lines.push((Priority::Condition, CardLine::Condition(i)));
+        fields.push(Field::Condition(i));
     }
     if !class_inline {
-        lines.push((Priority::Class, CardLine::Class));
+        fields.push(Field::Class);
     }
     if !armor_inline {
-        lines.push((Priority::Armor, CardLine::Armor));
+        fields.push(Field::Armor);
     }
     // All six or none. One score is not worth a line.
     if toggles.abilities && max_widths.abilities <= width {
-        lines.push((Priority::Abilities, CardLine::Abilities));
+        fields.push(Field::Abilities);
     }
+    fields
+}
 
-    // Cut from the end of the drop order, then put what is left back into
-    // reading order.
-    let mut order: Vec<usize> = (0..lines.len()).collect();
-    order.sort_by_key(|&i| lines[i].0.rank());
+/// `fields` cut to `budget` lines, in reading order.
+///
+/// [`DROP_ORDER`] decides what leaves. The sort must stay stable: every
+/// condition shares one rank, and they keep the order they were pushed in.
+fn cut(fields: Vec<Field>, budget: u16) -> Vec<Field> {
+    let mut order: Vec<usize> = (0..fields.len()).collect();
+    order.sort_by_key(|&i| fields[i].rank());
     order.truncate(usize::from(budget));
     order.sort_unstable();
-    order.into_iter().map(|i| lines[i].1).collect()
+    order.into_iter().map(|i| fields[i]).collect()
 }
 
 // --- The words on a card --------------------------------------------------
 
+/// What one field of a character means: the hit point bands in thirds rather
+/// than a gradient, and any condition other than `okay` as critical.
+fn tint(c: &Character, field: Field) -> Tint {
+    match field {
+        Field::Name => Tint::Heading,
+        Field::HitPoints => {
+            if c.hit_points_maximum == 0 || c.hit_points_current <= 0 {
+                return Tint::Critical;
+            }
+            let left = f64::from(c.hit_points_current) / f64::from(c.hit_points_maximum);
+            if left >= 0.66 {
+                Tint::Good
+            } else if left >= 0.33 {
+                Tint::Wounded
+            } else {
+                Tint::Critical
+            }
+        }
+        Field::Condition(i) => match conditions(c).get(i) {
+            Some(word) if word.eq_ignore_ascii_case("okay") => Tint::Good,
+            Some(_) => Tint::Critical,
+            None => Tint::Body,
+        },
+        Field::Class | Field::Armor | Field::Abilities => Tint::Body,
+    }
+}
+
 /// Every condition on the character, one item per line.
-pub fn conditions(c: &Character) -> Vec<String> {
+fn conditions(c: &Character) -> Vec<String> {
     vec![c
         .status
         .clone()
@@ -501,16 +630,16 @@ fn bar_text(c: &Character, width: u16) -> String {
 ///
 /// `shape` is the grid's, not the character's. It says which fields share a
 /// line at this width.
-pub fn line_text(c: &Character, line: &CardLine, shape: CardShape, width: u16) -> String {
+fn line_text(c: &Character, line: Field, shape: CardShape, width: u16) -> String {
     match line {
-        CardLine::Name => {
+        Field::Name => {
             if shape.class_inline {
                 two_up(&c.name, &class_text(c), width)
             } else {
                 fit(&c.name, width)
             }
         }
-        CardLine::HitPoints => {
+        Field::HitPoints => {
             let hp = hit_points_text(c);
             let drawn = bar_text(c, shape.bar);
             let left = if drawn.is_empty() {
@@ -524,12 +653,12 @@ pub fn line_text(c: &Character, line: &CardLine, shape: CardShape, width: u16) -
                 fit(&left, width)
             }
         }
-        CardLine::Condition(i) => fit(conditions(c).get(*i).map_or("", |s| s), width),
+        Field::Condition(i) => fit(conditions(c).get(i).map_or("", |s| s), width),
         // The own-line form has no separator. A card narrow enough to need
         // this line is narrow enough to want the four cells back.
-        CardLine::Class => fit(&format!("{} {}", class_name(c), c.level), width),
-        CardLine::Armor => fit(&armor_text(c), width),
-        CardLine::Abilities => fit(&abilities_text(c), width),
+        Field::Class => fit(&format!("{} {}", class_name(c), c.level), width),
+        Field::Armor => fit(&armor_text(c), width),
+        Field::Abilities => fit(&abilities_text(c), width),
     }
 }
 

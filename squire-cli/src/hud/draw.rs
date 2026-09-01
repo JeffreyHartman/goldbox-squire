@@ -1,21 +1,18 @@
 //! Turns a layout plan into cells.
 //!
-//! This file makes no decision about what is shown. It asks [`crate::layout`]
-//! and draws the answer. If a field's presence is ever decided here, the HUD
-//! is wrong: the whole point of the plan is that the rules are somewhere a
-//! test can reach without a terminal.
+//! This file makes no decision about what is shown, and it is not given the
+//! party, so it cannot. The plan arrives holding every line's text and its
+//! [`crate::layout::Tint`], and this file turns those into cells.
 //!
 //! It writes into a `Buffer` rather than taking a `Frame`, so that the tests
 //! draw at any size at all and read the cells back with no terminal anywhere.
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
-
-use squire_core::session::Party;
+use ratatui::style::{Modifier, Style};
 
 use crate::hud::theme;
-use crate::layout::{self, Axis, CardLine, Plan};
+use crate::layout::{self, Plan};
 
 /// The whole screen: the header, the cards, the logo, the status line.
 ///
@@ -23,7 +20,7 @@ use crate::layout::{self, Axis, CardLine, Plan};
 /// that character look like the party leader when it means nothing, and there
 /// is nothing yet to select a character *for*. When there is, the highlight
 /// comes back with the action it belongs to.
-pub fn draw(area: Rect, buf: &mut Buffer, plan: &Plan, party: &Party) {
+pub fn draw(area: Rect, buf: &mut Buffer, plan: &Plan) {
     buf.set_style(area, Style::default().bg(theme::INK).fg(theme::TEXT));
 
     put(
@@ -43,7 +40,7 @@ pub fn draw(area: Rect, buf: &mut Buffer, plan: &Plan, party: &Party) {
     let Some(grid) = plan.grid.as_ref() else {
         return;
     };
-    cards(area, buf, plan, grid, party);
+    cards(area, buf, plan, grid);
 
     // The plan was made for the size the terminal last reported, and a resize
     // can land between that question and this draw. So the room is measured
@@ -69,16 +66,10 @@ pub fn draw(area: Rect, buf: &mut Buffer, plan: &Plan, party: &Party) {
 /// The status line's colour says the same thing its words do, because a HUD is
 /// read from the corner of the eye and the colour arrives first.
 fn status_style(plan: &Plan) -> Style {
-    let colour = match plan.liveness {
-        layout::Liveness::Live => theme::TEXT,
-        layout::Liveness::Partial => theme::HP_WOUNDED,
-        layout::Liveness::Lost => theme::HP_CRITICAL,
-        layout::Liveness::Waiting => theme::HINT,
-    };
-    Style::default().fg(colour)
+    Style::default().fg(theme::color(plan.liveness.tint()))
 }
 
-fn cards(area: Rect, buf: &mut Buffer, plan: &Plan, grid: &layout::Grid, party: &Party) {
+fn cards(area: Rect, buf: &mut Buffer, plan: &Plan, grid: &layout::Grid) {
     // Stale numbers are still worth something, so they stay on screen. They
     // go grey and lose their colour coding, which is unmissable in peripheral
     // vision, which is where a HUD is read from.
@@ -104,17 +95,19 @@ fn cards(area: Rect, buf: &mut Buffer, plan: &Plan, grid: &layout::Grid, party: 
             for column in 0..grid.across {
                 let width = grid.widths[usize::from(column)];
                 set(area, buf, x, y, "│", frame);
-                // Horizontal fills a row before starting the next; vertical
-                // fills a column before starting the next. Either way, an
-                // uneven party leaves the last one short, not a middle one.
-                let who = match grid.axis {
-                    Axis::Horizontal => usize::from(row * grid.across + column),
-                    Axis::Vertical => usize::from(column * grid.down + row),
-                };
-                if let (Some(card), Some(c)) = (grid.cards.get(who), party.characters.get(who)) {
+                // An uneven party leaves the last card short, not a middle
+                // one, whichever way the grid flows.
+                let who = grid.who_at(row, column);
+                if let Some(card) = grid.cards.get(who) {
                     if let Some(planned) = card.lines.get(usize::from(line)) {
-                        let text = layout::line_text(c, planned, grid.shape, width);
-                        put(area, buf, x + 2, y, &text, line_style(plan, planned, c));
+                        put(
+                            area,
+                            buf,
+                            x + 2,
+                            y,
+                            &planned.text,
+                            line_style(plan, planned),
+                        );
                     }
                 }
                 x += width + 3;
@@ -126,25 +119,16 @@ fn cards(area: Rect, buf: &mut Buffer, plan: &Plan, grid: &layout::Grid, party: 
     rule(area, buf, grid, y, Edge::Bottom, frame);
 }
 
-/// What one planned line looks like.
+/// The tint the plan gave the line, in this palette.
 ///
-/// Colour is the only thing decided here, and it is decided from the numbers
-/// rather than from the size. Nothing about presence is touched.
-fn line_style(plan: &Plan, line: &CardLine, c: &squire_core::record::Character) -> Style {
+/// A lost anchor arrives as [`layout::Tint::Faint`] on every line, so the
+/// terminal's DIM attribute is the only thing left to add here.
+fn line_style(plan: &Plan, line: &layout::Line) -> Style {
+    let style = Style::default().fg(theme::color(line.tint));
     if plan.dim {
-        // One grey for the whole block. A dimmed red would still read as an
-        // alarm, and the point of dimming is that none of it is live.
-        Style::default().fg(theme::HINT).add_modifier(Modifier::DIM)
+        style.add_modifier(Modifier::DIM)
     } else {
-        let colour: Color = match line {
-            CardLine::Name => theme::GOLD,
-            CardLine::HitPoints => theme::hit_points(c.hit_points_current, c.hit_points_maximum),
-            CardLine::Condition(i) => layout::conditions(c)
-                .get(*i)
-                .map_or(theme::TEXT, |w| theme::condition(w)),
-            CardLine::Class | CardLine::Armor | CardLine::Abilities => theme::TEXT,
-        };
-        Style::default().fg(colour)
+        style
     }
 }
 

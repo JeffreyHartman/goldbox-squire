@@ -6,7 +6,7 @@
 //!
 //! The sizes come from ticket 034's mockups.
 
-use squire_cli::layout::{self, Axis, Caption, CardLine, Liveness, Plan, Size, Toggles};
+use squire_cli::layout::{self, Axis, Caption, Field, Liveness, Plan, Size, Tint, Toggles};
 use squire_core::record::Character;
 use squire_core::session::{Party, PartyState};
 
@@ -80,23 +80,8 @@ fn at(cols: u16, rows: u16) -> Plan {
     )
 }
 
-/// Every line the plan would put on screen, already fitted to the width.
-/// Nothing here draws; it renders what the plan already decided.
-fn card_text(plan: &Plan, party: &Party, card: usize) -> Vec<String> {
-    let grid = plan
-        .grid
-        .as_ref()
-        .expect("a grid was expected at this size");
-    let width = grid.widths[card % grid.across as usize];
-    grid.cards[card]
-        .lines
-        .iter()
-        .map(|line| layout::line_text(&party.characters[card], line, grid.shape, width))
-        .collect()
-}
-
 fn has_abilities(card: &layout::Card) -> bool {
-    card.lines.iter().any(|l| matches!(l, CardLine::Abilities))
+    card.lines.iter().any(|l| l.field == Field::Abilities)
 }
 
 // --- The number of cards across -------------------------------------------
@@ -202,9 +187,9 @@ fn a_wide_card_holds_the_whole_character() {
     assert!(grid.shape.class_inline);
     assert!(grid.shape.armor_inline);
     assert!(grid.shape.bar > 0);
-    assert!(matches!(card.lines[0], CardLine::Name));
-    assert!(matches!(card.lines[1], CardLine::HitPoints));
-    assert!(matches!(card.lines[2], CardLine::Condition(0)));
+    assert_eq!(card.lines[0].field, Field::Name);
+    assert_eq!(card.lines[1].field, Field::HitPoints);
+    assert_eq!(card.lines[2].field, Field::Condition(0));
     assert_eq!(card.lines.len(), 3, "the toggle is off, so no ability line");
 }
 
@@ -245,14 +230,14 @@ fn fields_leave_in_the_settled_order_as_the_card_narrows() {
     );
 }
 
-fn kind(line: &CardLine) -> &'static str {
-    match line {
-        CardLine::Name => "name",
-        CardLine::HitPoints => "hp",
-        CardLine::Condition(_) => "condition",
-        CardLine::Class => "class",
-        CardLine::Armor => "armor",
-        CardLine::Abilities => "abilities",
+fn kind(line: &layout::Line) -> &'static str {
+    match line.field {
+        Field::Name => "name",
+        Field::HitPoints => "hp",
+        Field::Condition(_) => "condition",
+        Field::Class => "class",
+        Field::Armor => "armor",
+        Field::Abilities => "abilities",
     }
 }
 
@@ -285,8 +270,11 @@ fn every_card_in_one_party_is_shaped_the_same() {
     // as a bug. The shape comes from the longest name and class in the party.
     let plan = at(80, 40);
     let grid = plan.grid.as_ref().unwrap();
-    let shape = |card: &layout::Card| -> Vec<std::mem::Discriminant<CardLine>> {
-        card.lines.iter().map(std::mem::discriminant).collect()
+    let shape = |card: &layout::Card| -> Vec<std::mem::Discriminant<Field>> {
+        card.lines
+            .iter()
+            .map(|l| std::mem::discriminant(&l.field))
+            .collect()
     };
     let first = shape(&grid.cards[0]);
     for (i, card) in grid.cards.iter().enumerate() {
@@ -352,21 +340,15 @@ fn no_card_ever_shows_one_ability_score() {
         let Some(grid) = plan.grid.as_ref() else {
             continue;
         };
-        for (i, card) in grid.cards.iter().enumerate() {
-            if !has_abilities(card) {
+        for card in &grid.cards {
+            let Some(line) = card.lines.iter().find(|l| l.field == Field::Abilities) else {
                 continue;
-            }
-            let width = grid.widths[i % grid.across as usize];
-            let text = layout::line_text(
-                &party.characters[i],
-                &CardLine::Abilities,
-                grid.shape,
-                width,
-            );
+            };
             assert_eq!(
-                text.trim_end().matches('/').count(),
+                line.text.trim_end().matches('/').count(),
                 5,
-                "{cols} columns cut the ability line: {text:?}"
+                "{cols} columns cut the ability line: {:?}",
+                line.text
             );
         }
     }
@@ -477,14 +459,19 @@ fn the_reason_survives_at_a_hostile_size() {
 
 #[test]
 fn a_hostile_size_draws_something_and_stays_inside_it() {
-    let party = party();
     let plan = at(40, 20);
     let grid = plan.grid.as_ref().expect("40x20 must still draw cards");
     assert!(grid.card_rows >= 2);
-    for i in 0..grid.cards.len() {
-        for line in card_text(&plan, &party, i) {
-            let width = grid.widths[i % grid.across as usize] as usize;
-            assert_eq!(line.chars().count(), width, "{line:?} is not {width} wide");
+    for column in 0..grid.across {
+        let card = &grid.cards[grid.who_at(0, column)];
+        let width = usize::from(grid.widths[usize::from(column)]);
+        for line in &card.lines {
+            assert_eq!(
+                line.text.chars().count(),
+                width,
+                "{:?} is not {width} wide",
+                line.text
+            );
         }
     }
     assert!(plan.header.chars().count() <= 40);
@@ -653,4 +640,318 @@ fn nothing_found_yet_is_not_a_lost_anchor() {
     assert!(!plan.dim);
     assert!(!plan.status.contains("lost"), "{:?}", plan.status);
     assert!(plan.status.contains("waiting"), "{:?}", plan.status);
+}
+
+// --- What a line means ------------------------------------------------
+
+/// Every line of every card, with the cards run together.
+fn lines_at(party: &Party, cols: u16, rows: u16) -> Vec<layout::Line> {
+    layout::plan(Size { cols, rows }, party, &caption(), Toggles::default())
+        .grid
+        .expect("a grid was expected at this size")
+        .cards
+        .into_iter()
+        .flat_map(|card| card.lines)
+        .collect()
+}
+
+/// The tint of one character's hit point line.
+fn hit_point_tint(hp: i16, hp_max: u8) -> Tint {
+    let mut party = party();
+    party.characters.truncate(1);
+    party.characters[0].hit_points_current = hp;
+    party.characters[0].hit_points_maximum = hp_max;
+    lines_at(&party, 110, 50)
+        .into_iter()
+        .find(|l| l.field == Field::HitPoints)
+        .expect("every card has a hit point line")
+        .tint
+}
+
+#[test]
+fn the_hit_point_bands_are_thirds() {
+    assert_eq!(hit_point_tint(44, 44), Tint::Good);
+    assert_eq!(hit_point_tint(30, 44), Tint::Good);
+    assert_eq!(hit_point_tint(22, 44), Tint::Wounded);
+    assert_eq!(hit_point_tint(15, 44), Tint::Wounded);
+    assert_eq!(hit_point_tint(4, 44), Tint::Critical);
+    assert_eq!(hit_point_tint(0, 44), Tint::Critical);
+    assert_eq!(hit_point_tint(-3, 44), Tint::Critical);
+}
+
+#[test]
+fn a_character_with_no_maximum_is_not_a_division_by_zero() {
+    assert_eq!(hit_point_tint(0, 0), Tint::Critical);
+}
+
+#[test]
+fn anything_that_is_not_okay_is_critical() {
+    // A silent `poisoned` is the thing you most want to notice without
+    // looking away from the game.
+    let party = party();
+    let tints: Vec<(String, Tint)> = lines_at(&party, 110, 50)
+        .into_iter()
+        .filter(|l| matches!(l.field, Field::Condition(_)))
+        .map(|l| (l.text.trim_end().to_string(), l.tint))
+        .collect();
+    assert!(
+        tints.contains(&("okay".to_string(), Tint::Good)),
+        "{tints:?}"
+    );
+    assert!(
+        tints.contains(&("poisoned".to_string(), Tint::Critical)),
+        "{tints:?}"
+    );
+}
+
+#[test]
+fn a_name_is_a_heading_and_the_rest_is_body() {
+    for line in lines_at(&party(), 110, 50) {
+        let want = match line.field {
+            Field::Name => Tint::Heading,
+            Field::Class | Field::Armor | Field::Abilities => Tint::Body,
+            _ => continue,
+        };
+        assert_eq!(line.tint, want, "{:?} of {:?}", line.field, line.text);
+    }
+}
+
+#[test]
+fn a_lost_anchor_faints_every_line_it_leaves_on_screen() {
+    let mut lost = party();
+    lost.state = PartyState::NotFound;
+    let plan = layout::plan(
+        Size {
+            cols: 110,
+            rows: 50,
+        },
+        &lost,
+        &caption(),
+        Toggles::default(),
+    );
+    assert!(plan.dim, "a lost anchor asks for the DIM attribute too");
+    let lines: Vec<&layout::Line> = plan
+        .grid
+        .as_ref()
+        .expect("the last known numbers stay on screen")
+        .cards
+        .iter()
+        .flat_map(|card| &card.lines)
+        .collect();
+    assert!(!lines.is_empty());
+    for line in lines {
+        assert_eq!(line.tint, Tint::Faint, "{:?} kept a live colour", line.text);
+    }
+}
+
+#[test]
+fn the_status_lines_meaning_travels_with_the_plan() {
+    assert_eq!(Liveness::Live.tint(), Tint::Body);
+    assert_eq!(Liveness::Partial.tint(), Tint::Wounded);
+    assert_eq!(Liveness::Lost.tint(), Tint::Critical);
+    assert_eq!(Liveness::Waiting.tint(), Tint::Faint);
+}
+
+// --- The cards, word for word ---------------------------------------------
+
+/// Sizes from ticket 034's mockups: hostile, the width the sidecar opens at,
+/// tall, short and wide, and roomy.
+const MOCKUP_SIZES: [(u16, u16); 5] = [(40, 20), (60, 40), (110, 50), (160, 14), (160, 42)];
+
+#[test]
+fn every_card_is_pinned_word_for_word() {
+    let mut seen: Vec<String> = Vec::new();
+    for (cols, rows) in MOCKUP_SIZES {
+        for card in &at(cols, rows).grid.unwrap().cards {
+            seen.extend(card.lines.iter().map(|l| l.text.clone()));
+        }
+    }
+    let want = [
+        // 40x20
+        "THRENDER …",
+        "hp 42/42  ",
+        "okay      ",
+        "fighter 5 ",
+        "ac 2      ",
+        "BROTHER S…",
+        "hp 26/26  ",
+        "okay      ",
+        "cleric 4  ",
+        "ac 4      ",
+        "AMRYL     ",
+        "hp 14/14  ",
+        "okay      ",
+        "mage 4    ",
+        "ac 8      ",
+        "KEIRA     ",
+        "hp 18/31  ",
+        "okay      ",
+        "fighter/t…",
+        "ac 5      ",
+        "DURIN STO…",
+        "hp 38/44  ",
+        "poisoned  ",
+        "fighter 5 ",
+        "ac 1      ",
+        "ELANNA    ",
+        "hp 20/22  ",
+        "okay      ",
+        "cleric/ma…",
+        "ac 6      ",
+        // 60x40
+        "THRENDER…",
+        "hp 42/42 ",
+        "okay     ",
+        "fighter 5",
+        "ac 2     ",
+        "BROTHER …",
+        "hp 26/26 ",
+        "okay     ",
+        "cleric 4 ",
+        "ac 4     ",
+        "AMRYL    ",
+        "hp 14/14 ",
+        "okay     ",
+        "mage 4   ",
+        "ac 8     ",
+        "KEIRA    ",
+        "hp 18/31 ",
+        "okay     ",
+        "fighter/…",
+        "ac 5     ",
+        "DURIN S…",
+        "hp 38/44",
+        "poisoned",
+        "fighter…",
+        "ac 1    ",
+        "ELANNA   ",
+        "hp 20/22 ",
+        "okay     ",
+        "cleric/m…",
+        "ac 6     ",
+        // 110x50
+        "THRENDER GRONE  ",
+        "hp 42/42 ██████ ",
+        "okay            ",
+        "fighter 5       ",
+        "ac 2            ",
+        "BROTHER SEAN   ",
+        "hp 26/26 ██████",
+        "okay           ",
+        "cleric 4       ",
+        "ac 4           ",
+        "AMRYL          ",
+        "hp 14/14 ██████",
+        "okay           ",
+        "mage 4         ",
+        "ac 8           ",
+        "KEIRA          ",
+        "hp 18/31 ███░░░",
+        "okay           ",
+        "fighter/thief 5",
+        "ac 5           ",
+        "DURIN STONEFOOT",
+        "hp 38/44 █████░",
+        "poisoned       ",
+        "fighter 5      ",
+        "ac 1           ",
+        "ELANNA         ",
+        "hp 20/22 █████░",
+        "okay           ",
+        "cleric/mage 3  ",
+        "ac 6           ",
+        // 160x14
+        "THRENDER GRONE          ",
+        "hp 42/42 ████████   ac 2",
+        "okay                    ",
+        "fighter 5               ",
+        "BROTHER SEAN            ",
+        "hp 26/26 ████████   ac 4",
+        "okay                    ",
+        "cleric 4                ",
+        "AMRYL                   ",
+        "hp 14/14 ████████   ac 8",
+        "okay                    ",
+        "mage 4                  ",
+        "KEIRA                  ",
+        "hp 18/31 █████░░░  ac 5",
+        "okay                   ",
+        "fighter/thief 5        ",
+        "DURIN STONEFOOT        ",
+        "hp 38/44 ███████░  ac 1",
+        "poisoned               ",
+        "fighter 5              ",
+        "ELANNA                 ",
+        "hp 20/22 ███████░  ac 6",
+        "okay                   ",
+        "cleric/mage 3          ",
+        // 160x42
+        "THRENDER GRONE          ",
+        "hp 42/42 ████████   ac 2",
+        "okay                    ",
+        "fighter 5               ",
+        "BROTHER SEAN            ",
+        "hp 26/26 ████████   ac 4",
+        "okay                    ",
+        "cleric 4                ",
+        "AMRYL                   ",
+        "hp 14/14 ████████   ac 8",
+        "okay                    ",
+        "mage 4                  ",
+        "KEIRA                  ",
+        "hp 18/31 █████░░░  ac 5",
+        "okay                   ",
+        "fighter/thief 5        ",
+        "DURIN STONEFOOT        ",
+        "hp 38/44 ███████░  ac 1",
+        "poisoned               ",
+        "fighter 5              ",
+        "ELANNA                 ",
+        "hp 20/22 ███████░  ac 6",
+        "okay                   ",
+        "cleric/mage 3          ",
+    ];
+    assert_eq!(seen, want);
+}
+
+#[test]
+fn a_card_is_padded_to_the_column_it_lands_in() {
+    // 62 columns divide with a cell left over, so the leftmost column is one
+    // wider than the rest and a card padded to the wrong one shows up.
+    //
+    // The walk is the drawing code's: every frame column, and the card that
+    // lands in it. A card whose text does not fill that column exactly would
+    // leave a gap or run into the frame.
+    for axis in [Axis::Horizontal, Axis::Vertical] {
+        let plan = layout::plan(
+            Size { cols: 62, rows: 20 },
+            &party(),
+            &caption(),
+            Toggles {
+                axis,
+                ..Toggles::default()
+            },
+        );
+        let grid = plan.grid.expect("62x20 fits either way");
+        assert!(
+            grid.across > 1 && grid.widths[0] != grid.widths[1],
+            "{axis:?} lost the uneven columns this test needs: {grid:?}"
+        );
+        for row in 0..grid.down {
+            for column in 0..grid.across {
+                let Some(card) = grid.cards.get(grid.who_at(row, column)) else {
+                    continue;
+                };
+                let width = usize::from(grid.widths[usize::from(column)]);
+                for line in &card.lines {
+                    assert_eq!(
+                        line.text.chars().count(),
+                        width,
+                        "{axis:?} row {row} column {column}: {:?} is not {width} wide",
+                        line.text
+                    );
+                }
+            }
+        }
+    }
 }
